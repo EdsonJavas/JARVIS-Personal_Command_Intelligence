@@ -1,0 +1,2029 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+/* ==========================================================================
+   Tokens — azul de HUD sobre preto, como nas primeiras aparições dele.
+   
+   O nome `--amber` ficou: ele aparece em dezenas de regras do painel de
+   instrumentos, e trocar o nome em todas mudaria centenas de linhas sem mudar
+   nada visível. O que mudou é o VALOR — agora é o azul. Renomear fica para
+   quando houver motivo além da estética.
+   ========================================================================== */
+:root {
+  --void: #05080d;
+  --panel: #0a0f16;
+  --panel-2: #080c12;
+  --line: rgba(120, 200, 255, 0.09);
+  --line-strong: rgba(120, 200, 255, 0.3);
+
+  /* O azul do Jarvis. Um só, em todos os estados. */
+  --azul: #78c8ff;
+  --azul-claro: #b9e4ff;
+  --azul-fundo: #1d4f78;
+
+  --amber: #78c8ff;
+  --amber-hot: #b9e4ff;
+  --amber-deep: #3a8fc4;
+  --cyan: #5fd8ff;
+  --mint: #4fe0a0;
+  --alert: #ff5a4d;
+
+  --ink: #e8eaee;
+  --muted: #8b96a5;
+  --mono: "DM Mono", ui-monospace, monospace;
+  --display: "Manrope", sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  /*
+   * Altura e largura explicitas ate a raiz.
+   *
+   * `min-height: 100%` sozinho nao propaga: cada nivel precisa ter altura para
+   * o seguinte poder herda-la, e sem isso a tela principal fica dimensionada
+   * pelo conteudo em vez de pela janela.
+   */
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: var(--void);
+}
+
+body {
+  color: var(--ink);
+  font-family: var(--display);
+}
+
+button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: 3px;
+}
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.amber { color: var(--amber); }
+.cyan { color: var(--cyan); }
+.mint { color: var(--mint); }
+.alert { color: var(--alert); }
+.muted { color: var(--muted); }
+
+.boot-state {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  color: var(--muted);
+  font: 10px var(--mono);
+  letter-spacing: 0.2em;
+}
+
+/* --------------------------- superfícies comuns --------------------------- */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font: 8px var(--mono);
+  letter-spacing: 0.16em;
+}
+.panel-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.panel-head b {
+  color: var(--amber);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-head b.live {
+  color: var(--amber-hot);
+  animation: livePulse 1.6s var(--ease-out) infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.42; }
+}
+
+.head-actions { display: flex; gap: 4px; }
+.head-actions button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  transition: color 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
+}
+.head-actions button:hover {
+  color: var(--amber);
+  border-color: var(--line-strong);
+}
+
+/* ==========================================================================
+   JANELA PRINCIPAL — flush.
+
+   Sem seções encapsuladas. O núcleo ocupa o centro, a transcrição corre no alto
+   como legenda, a onda vive pequena no canto e a execução sussurra no rodapé.
+   Tudo sobre o mesmo fundo, sem molduras — a moldura é o que fazia a tela
+   parecer um formulário em vez de um instrumento.
+
+   A conversa fica FECHADA por padrão: era ela que roubava o espaço do principal.
+   ========================================================================== */
+.ponte {
+  position: relative;
+  /*
+   * Bloco simples, e nao grid.
+   *
+   * Com `display: grid; place-items: center` o centro dependia de como o
+   * navegador dimensiona a trilha implicita — e o nucleo saiu do lugar assim
+   * que a tela ganhou outros elementos. Todo filho aqui e posicionado de forma
+   * absoluta, entao o container nao precisa de layout nenhum: precisa ter o
+   * tamanho da janela, e ponto.
+   */
+  display: block;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 46%, rgba(120, 200, 255, 0.055), transparent 52%),
+    radial-gradient(ellipse at 12% 4%, rgba(120, 200, 255, 0.035), transparent 40%),
+    var(--void);
+}
+
+/* Grão fino: tira o aspecto de gradiente digital chapado, sem custar quadro. */
+.ponte-grao {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.55) 0px,
+    rgba(255, 255, 255, 0.55) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* Halo atrás do núcleo. Fica no fundo para o azul do centro não parecer colado. */
+.ponte-brilho {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(74vh, 58vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(120, 200, 255, 0.07), transparent 62%);
+}
+
+/* --------------------------------- palco ---------------------------------- */
+.palco {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: min(58vh, 46vw);
+  aspect-ratio: 1;
+  /* O centro e uma conta, nao uma consequencia do fluxo. */
+  transform: translate(-50%, -50%);
+  transition: transform 420ms var(--ease-out);
+}
+/* Cede espaço quando a conversa abre, em vez de ficar atrás dela. */
+.ponte.com-conversa .palco { transform: translate(-50%, -50%) translateX(-12vw) scale(0.88); }
+
+@media (max-width: 900px) {
+  .ponte.com-conversa .palco { transform: scale(0.7) translateY(-12vh); }
+}
+
+.nucleo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+.nucleo canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.nucleo-marca {
+  position: absolute;
+  bottom: -6%;
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.52em;
+  text-indent: 0.52em;
+  opacity: 0.45;
+}
+
+/* ------------------------------ transcrição -------------------------------- */
+.transcricao {
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  width: min(760px, 82vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  text-align: center;
+}
+.legenda {
+  margin: 0;
+  color: var(--ink);
+  font: 12.5px/1.5 var(--mono);
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+  /* Sombra em vez de caixa: legível sobre o fundo sem cortar um retângulo nele. */
+  text-shadow: 0 0 18px rgba(5, 8, 13, 0.95), 0 0 6px rgba(5, 8, 13, 0.9);
+  animation: legenda-entra 260ms var(--ease-out);
+}
+@keyframes legenda-entra {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .legenda { animation: none; }
+}
+
+.legenda.anterior { font-size: 11px; }
+.legenda.atual { color: var(--azul-claro); }
+.legenda.tipo-pergunta { color: var(--azul); }
+.legenda.escrevendo::after {
+  content: "▍";
+  margin-left: 2px;
+  color: var(--azul);
+  animation: piscar 1s steps(2) infinite;
+}
+
+/* -------------------------------- comandos --------------------------------- */
+.comandos {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px;
+  /* Sem borda: só um vidro leve, para os ícones não flutuarem soltos. */
+  background: rgba(10, 16, 24, 0.5);
+  backdrop-filter: blur(10px);
+  border-radius: 2px;
+}
+.comandos button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 150ms var(--ease-out), background 150ms var(--ease-out);
+}
+.comandos button:hover:not(:disabled) { color: var(--azul); background: rgba(120, 200, 255, 0.08); }
+.comandos button.ativo { color: var(--azul); background: rgba(120, 200, 255, 0.12); }
+.comandos button:disabled { opacity: 0.25; cursor: not-allowed; }
+.comandos button.sair:hover { color: var(--alert); background: rgba(255, 90, 77, 0.1); }
+.comandos button.alerta { color: var(--azul); }
+
+.comandos .ponto {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--azul);
+  animation: piscar 1.4s ease-in-out infinite;
+}
+.comandos-divisor {
+  width: 1px;
+  height: 15px;
+  margin: 0 3px;
+  background: var(--line);
+}
+
+/* Estado, discreto, no canto inferior esquerdo. */
+.marca-estado {
+  position: absolute;
+  bottom: 22px;
+  left: 22px;
+  z-index: 2;
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.marca-estado.estado-speaking,
+.marca-estado.estado-listening,
+.marca-estado.estado-thinking { color: var(--azul); opacity: 0.9; }
+
+/* --------------------------------- gaveta ---------------------------------- */
+.gaveta {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: min(430px, 92vw);
+  padding: 12px 12px 12px 0;
+  display: flex;
+  transform: translateX(102%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 380ms var(--ease-out), opacity 260ms var(--ease-out);
+}
+.gaveta.aberta { transform: none; opacity: 1; pointer-events: auto; }
+.gaveta > * { flex: 1; min-height: 0; }
+
+/* A conversa mantém casca por ser painel de leitura longa, mas discreta. */
+.console-painel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: rgba(8, 13, 20, 0.86);
+  backdrop-filter: blur(14px);
+}
+.painel-topo {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.16em;
+}
+.painel-topo .head-actions { display: flex; align-items: center; gap: 4px; }
+.painel-topo button {
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 140ms var(--ease-out);
+}
+.painel-topo button:hover { color: var(--azul); }
+
+@keyframes piscar { 50% { opacity: 0.15; } }
+/* ==========================================================================
+   Conversa
+   ========================================================================== */
+.console-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 138, 76, 0.35) transparent;
+}
+.console-thread::-webkit-scrollbar { width: 5px; }
+.console-thread::-webkit-scrollbar-thumb { background: rgba(255, 138, 76, 0.35); }
+
+.console-empty {
+  margin: auto 0;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.015);
+}
+.console-empty p { margin: 0 0 6px; color: var(--ink); font-size: 13px; }
+.console-empty span { color: var(--muted); font-size: 11.5px; line-height: 1.55; }
+
+.console-turn {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.017);
+  animation: turnIn 0.28s var(--ease-out) both;
+}
+@keyframes turnIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+.console-turn small {
+  display: block;
+  margin-bottom: 5px;
+  font: 7px var(--mono);
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+.console-turn p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.console-turn.user {
+  margin-left: 18px;
+  border-color: rgba(95, 216, 255, 0.22);
+  background: rgba(95, 216, 255, 0.05);
+}
+.console-turn.user small { color: var(--cyan); }
+.console-turn.assistant { border-left: 2px solid var(--amber); }
+.console-turn.assistant small { color: var(--amber); }
+.console-turn.pending p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.console-interim {
+  padding: 8px 11px;
+  border: 1px dashed rgba(79, 224, 160, 0.3);
+  color: var(--mint);
+  font: 11.5px var(--mono);
+  font-style: italic;
+}
+
+.console-alert {
+  display: flex;
+  gap: 9px;
+  margin: 0 11px 10px;
+  padding: 10px 12px;
+  color: var(--amber-hot);
+  border: 1px solid rgba(255, 138, 76, 0.3);
+  background: rgba(255, 138, 76, 0.07);
+}
+.console-alert p { margin: 0; font-size: 12px; line-height: 1.5; }
+.console-alert button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 9px;
+  color: var(--amber-hot);
+  border: 1px solid rgba(255, 138, 76, 0.4);
+  background: transparent;
+  font: 8px var(--mono);
+  letter-spacing: 0.12em;
+  transition: background 0.2s var(--ease-out);
+}
+.console-alert button:hover:not(:disabled) { background: rgba(255, 138, 76, 0.14); }
+.console-alert button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.console-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px;
+  border-top: 1px solid var(--line);
+}
+.console-composer textarea {
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  /* Sem alça de redimensionar: a altura é do layout, não do usuário. */
+  resize: none;
+  font: 13px var(--display);
+  line-height: 1.55;
+  transition: border-color 0.2s var(--ease-out);
+}
+.console-composer textarea:focus { outline: 0; border-color: var(--line-strong); }
+.console-composer textarea::placeholder { color: #4a545f; }
+
+.console-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 15px;
+  color: #120a05;
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  font: 8px var(--mono);
+  letter-spacing: 0.16em;
+  transition: opacity 0.2s var(--ease-out);
+}
+.console-send:hover:not(:disabled) { opacity: 0.86; }
+.console-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ==========================================================================
+   JANELA DO PAINEL — a segunda superfície do Jarvis.
+   A máquina cabe numa faixa; o espaço grande é do que serve para trabalhar.
+   Rola de propósito: o conteúdo cresce conforme ele deixa coisas aqui.
+   ========================================================================== */
+.board {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: 9px;
+  gap: 9px;
+  background:
+    radial-gradient(ellipse at 22% 0%, rgba(255, 138, 76, 0.09), transparent 46%),
+    var(--void);
+}
+.board-scroll { overflow-y: auto; }
+
+.board-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(22, 14, 10, 0.72), rgba(10, 12, 16, 0.55));
+  /* Gruda no topo: a hora e a pressão da máquina não podem sumir com a rolagem. */
+  position: sticky;
+  top: -9px;
+  z-index: 5;
+  backdrop-filter: blur(8px);
+}
+.board-brand h1 {
+  margin: 0;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+}
+.board-brand h1 i { color: var(--amber); font-style: normal; }
+.board-brand p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.13em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-brand p i {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 138, 76, 0.5), transparent);
+}
+
+.board-ticker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.board-ticker span {
+  display: grid;
+  gap: 3px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+.board-ticker small {
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.14em;
+}
+.board-ticker b {
+  font: 12px var(--mono);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Cada linha é um assunto. Grid explícito em vez de auto-fit: as proporções
+   entre os assuntos são escolhidas, não emergentes da largura do conteúdo. */
+.board-linha {
+  display: grid;
+  gap: 9px;
+  align-items: stretch;
+}
+.linha-mundo { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, 1.15fr); }
+.linha-dev { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+.linha-jarvis { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+
+@media (max-width: 1180px) {
+  .linha-mundo,
+  .linha-dev,
+  .linha-jarvis { grid-template-columns: minmax(0, 1fr); }
+}
+
+.board .panel { overflow: hidden; }
+
+.vazio {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--muted);
+  font: 10px var(--mono);
+  letter-spacing: 0.11em;
+  line-height: 1.7;
+}
+
+.alternar {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--amber);
+  font: 9px var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.alternar:hover { color: var(--amber-hot); }
+
+/* ------------------------------ faixa de vitais ---------------------------- */
+.faixa-vitais { flex: 0 0 auto; }
+.vitais-corpo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 1px;
+  background: var(--line);
+}
+@media (max-width: 980px) {
+  .vitais-corpo { grid-template-columns: minmax(0, 1fr); }
+}
+
+.vitais-medidores {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+.vital {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 10px 6px 11px;
+  background: var(--panel);
+  min-width: 0;
+}
+.vital h4 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 0;
+  color: var(--ink);
+  font: 9px var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.15em;
+}
+.vital small {
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.08em;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vitais-grafico {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background: var(--panel);
+  min-width: 0;
+}
+
+.gauge-body {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+}
+.gauge-svg { width: 100%; max-width: 112px; height: auto; }
+.gauge-tick { stroke: rgba(255, 255, 255, 0.13); stroke-width: 1.4; }
+.gauge-tick.major { stroke: rgba(255, 255, 255, 0.24); }
+.gauge-tick.on { stroke: var(--amber); }
+.gauge-tick.on.major { stroke: var(--amber-hot); }
+
+.gauge-track,
+.gauge-arc { fill: none; stroke-linecap: butt; stroke-width: 7; }
+.gauge-track { stroke: rgba(255, 255, 255, 0.06); }
+.gauge-arc {
+  stroke: var(--amber);
+  filter: drop-shadow(0 0 5px rgba(255, 138, 76, 0.45));
+  transition: stroke-dasharray 380ms var(--ease-out);
+}
+
+.gauge-value {
+  position: absolute;
+  display: grid;
+  place-items: center;
+}
+.gauge-value strong {
+  color: var(--ink);
+  font: 19px var(--mono);
+  font-weight: 500;
+  line-height: 1;
+}
+.gauge-value strong.mint { color: var(--mint); }
+.gauge-value strong.amber { color: var(--amber); }
+.gauge-value strong.alert { color: var(--alert); }
+
+/* --------------------------- gráfico de área ------------------------------ */
+.area-chart {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+  padding: 9px 11px 0;
+}
+.area-chart svg {
+  width: 100%;
+  height: 100%;
+  min-height: 62px;
+  overflow: visible;
+}
+.grid-line { stroke: rgba(255, 255, 255, 0.05); stroke-width: 1; }
+.series { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.series.s-cpu { stroke: var(--amber); }
+.series.s-mem { stroke: var(--cyan); }
+.series.s-gpu { stroke: var(--mint); }
+.series.s-io { stroke: #b57bff; }
+
+.area-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 7px 0 8px;
+}
+.area-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.13em;
+}
+.area-legend i { width: 10px; height: 2px; background: currentColor; }
+.area-legend .s-cpu { color: var(--amber); }
+.area-legend .s-mem { color: var(--cyan); }
+.area-legend .s-gpu { color: var(--mint); }
+.area-legend .s-io { color: #b57bff; }
+.area-legend b { font: 12px var(--mono); font-weight: 500; }
+.area-legend b small { font-size: 7px; opacity: 0.6; }
+
+.io-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border-top: 1px solid var(--line);
+}
+.io-row article {
+  display: grid;
+  gap: 3px;
+  padding: 7px 10px;
+  background: var(--panel);
+  min-width: 0;
+}
+.io-row small { color: var(--muted); font: 9px var(--mono); letter-spacing: 0.14em; }
+.io-row b { font: 12px var(--mono); font-weight: 500; white-space: nowrap; }
+
+/* ---------------------------------- clima ---------------------------------- */
+.clima-agora {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 13px 13px 14px;
+}
+.clima-agora strong {
+  display: flex;
+  align-items: flex-start;
+  color: var(--amber);
+  font: 42px var(--mono);
+  font-weight: 500;
+  line-height: 0.9;
+  text-shadow: 0 0 24px rgba(255, 138, 76, 0.3);
+}
+.clima-agora strong span { font-size: 15px; opacity: 0.55; margin-top: 2px; }
+.clima-agora p {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font: 11px var(--mono);
+  font-weight: 500;
+}
+.clima-agora small {
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.09em;
+  line-height: 1.6;
+}
+
+.clima-dias {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: auto;
+  background: var(--line);
+  border-top: 1px solid var(--line);
+}
+.clima-dias article {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 9px 4px;
+  background: var(--panel);
+}
+.clima-dias small { color: var(--muted); font: 9px var(--mono); letter-spacing: 0.13em; }
+.clima-dias b { color: var(--ink); font: 12px var(--mono); font-weight: 500; }
+.clima-dias em { color: var(--muted); font: 9px var(--mono); font-style: normal; }
+.clima-dias i { font: 9px var(--mono); font-style: normal; }
+
+/* -------------------------------- cotações --------------------------------- */
+.cotacoes {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  align-content: start;
+}
+.cotacoes article {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px 9px;
+  background: var(--panel);
+}
+.cotacoes header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 9px;
+}
+.cotacoes header span {
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cotacoes header b { color: var(--ink); font: 14px var(--mono); font-weight: 500; }
+.cotacoes header em {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font: 9px var(--mono);
+  font-style: normal;
+  min-width: 52px;
+  justify-content: flex-end;
+}
+
+/* Onde o valor de agora cai dentro do que já andou no dia. */
+.faixa-dia {
+  position: relative;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.faixa-dia i {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 7px;
+  background: currentColor;
+  transform: translateX(-1px);
+  transition: left 500ms var(--ease-out);
+}
+.cotacoes footer {
+  display: flex;
+  justify-content: space-between;
+}
+.cotacoes footer small { color: var(--muted); font: 9px var(--mono); }
+
+/* -------------------------------- manchetes -------------------------------- */
+.manchetes {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  align-content: start;
+}
+.manchetes a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 160ms var(--ease-out);
+}
+.manchetes a:hover { background: rgba(255, 138, 76, 0.07); color: var(--amber-hot); }
+.manchetes a span {
+  font: 10px var(--mono);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.manchetes a small { color: var(--muted); font: 9px var(--mono); white-space: nowrap; }
+
+/* ------------------------------ repositórios ------------------------------- */
+.repos {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  align-content: start;
+}
+.repos article {
+  display: grid;
+  gap: 4px;
+  padding: 9px 12px 10px;
+  background: var(--panel);
+  min-width: 0;
+}
+.repo-topo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+}
+.repo-topo strong { font: 11px var(--mono); font-weight: 500; }
+.repo-ramo {
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.08em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-topo em { color: var(--muted); font: 9px var(--mono); font-style: normal; white-space: nowrap; }
+.repos article p {
+  margin: 0;
+  color: var(--muted);
+  font: 9px var(--mono);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-marcas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.repo-marcas i {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  font: 9px var(--mono);
+  font-style: normal;
+  letter-spacing: 0.08em;
+}
+
+/* ------------------------- portas, como faixa ------------------------------ */
+.portas-faixa {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.portas-faixa > small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.14em;
+}
+.portas-faixa > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.portas-faixa i {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  font-style: normal;
+}
+.portas-faixa i b { color: var(--cyan); font: 10px var(--mono); font-weight: 500; }
+.portas-faixa i span {
+  color: var(--muted);
+  font: 9px var(--mono);
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.portas-faixa em { color: var(--muted); font: 9px var(--mono); font-style: normal; }
+
+/* -------------------------------- arquivos --------------------------------- */
+.arquivos {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  align-content: start;
+}
+.arquivos article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 12px;
+  background: var(--panel);
+}
+.arquivos span {
+  color: var(--ink);
+  font: 9.5px var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arquivos em { color: var(--muted); font: 9px var(--mono); font-style: normal; white-space: nowrap; }
+.arquivos small { color: var(--muted); font: 9px var(--mono); white-space: nowrap; min-width: 46px; text-align: right; }
+
+/* --------------------------- cartões do Jarvis ----------------------------- */
+.cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  gap: 9px;
+  padding: 10px;
+  align-content: start;
+}
+.cartao {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 10px 11px 11px;
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.cartao.tom-neutro { border-left-color: var(--line-strong); }
+.cartao.tom-bom { border-left-color: var(--mint); }
+.cartao.tom-atencao { border-left-color: var(--amber); }
+.cartao.tom-alerta { border-left-color: var(--alert); }
+
+.cartao header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 7px;
+}
+.cartao header strong {
+  color: var(--ink);
+  font: 10px var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cartao header em { color: var(--muted); font: 9px var(--mono); font-style: normal; }
+.cartao header button,
+.memorias article button {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 140ms var(--ease-out);
+}
+.cartao header button:hover { color: var(--alert); }
+
+.cartao ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cartao li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  color: var(--ink);
+  font: 9.5px var(--mono);
+  line-height: 1.5;
+}
+.cartao li b {
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.cartao li span { overflow-wrap: anywhere; }
+.cartao footer {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 9px var(--mono);
+  line-height: 1.5;
+}
+
+/* -------------------------------- memórias --------------------------------- */
+.memorias {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  align-content: start;
+}
+.memorias article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 9px 12px 10px;
+  background: var(--panel);
+}
+.memorias article.apagada { opacity: 0.42; }
+.memorias article.apagada .memoria-texto > span { text-decoration: line-through; }
+.memorias article button:hover { color: var(--alert); }
+.memorias article.apagada button:hover { color: var(--mint); }
+
+.memoria-texto { display: grid; gap: 5px; min-width: 0; }
+.memoria-texto > span {
+  color: var(--ink);
+  font: 10px var(--mono);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.memoria-marcas { display: flex; flex-wrap: wrap; gap: 5px; }
+.memoria-marcas i {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: 9px var(--mono);
+  font-style: normal;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.memoria-marcas .tipo-correcao { color: var(--alert); border-color: rgba(255, 64, 51, 0.3); }
+.memoria-marcas .tipo-preferencia { color: var(--amber); border-color: var(--line-strong); }
+.memoria-marcas .tipo-projeto { color: var(--cyan); border-color: rgba(95, 216, 255, 0.28); }
+.memoria-marcas .tipo-fato { color: var(--muted); }
+
+/* Cores de estado, compartilhadas pelo painel inteiro. */
+.mint { color: var(--mint); }
+.amber { color: var(--amber); }
+.cyan { color: var(--cyan); }
+.alert { color: var(--alert); }
+.muted { color: var(--muted); }
+
+/* ==========================================================================
+   Tela de senha
+   ========================================================================== */
+.login-shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 34%, rgba(255, 138, 76, 0.16), transparent 48%),
+    var(--void);
+}
+.login-card {
+  width: min(100%, 372px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(20, 13, 9, 0.8), rgba(10, 12, 16, 0.66));
+}
+.login-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--amber);
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 138, 76, 0.08);
+}
+.login-heading .eyebrow {
+  color: var(--muted);
+  font: 8px var(--mono);
+  letter-spacing: 0.18em;
+}
+.login-heading h1 { margin: 7px 0 8px; font-size: 26px; letter-spacing: 0.18em; }
+.login-heading p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.login-field { display: flex; flex-direction: column; gap: 7px; }
+.login-field span { color: var(--muted); font: 8px var(--mono); letter-spacing: 0.16em; }
+.login-field input {
+  padding: 11px 13px;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--line);
+  font: 14px var(--mono);
+  letter-spacing: 0.1em;
+  transition: border-color 0.2s var(--ease-out);
+}
+.login-field input:focus { outline: 0; border-color: var(--line-strong); }
+.login-error {
+  margin: 0;
+  padding: 9px 11px;
+  color: var(--amber-hot);
+  border: 1px solid rgba(255, 138, 76, 0.32);
+  background: rgba(255, 138, 76, 0.08);
+  font-size: 12.5px;
+}
+.login-card button[type="submit"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  color: #120a05;
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  font: 9px var(--mono);
+  letter-spacing: 0.18em;
+  transition: opacity 0.2s var(--ease-out);
+}
+.login-card button[type="submit"]:hover:not(:disabled) { opacity: 0.86; }
+.login-card button[type="submit"]:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ==========================================================================
+   Responsivo
+   ========================================================================== */
+@media (max-width: 1500px) {
+  .board-grid {
+    grid-template-columns: minmax(260px, 1fr) minmax(300px, 1.2fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "cpu    charts"
+      "cpu    memory"
+      "disks  network"
+      "proc   system";
+  }
+}
+
+@media (max-width: 1024px) {
+  .deck-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(320px, 1fr) minmax(0, 1fr);
+  }
+  .board-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      "cpu"
+      "charts"
+      "memory"
+      "disks"
+      "network"
+      "proc"
+      "system";
+  }
+  .process-table { max-height: 380px; }
+}
+
+@media (max-width: 640px) {
+  .deck { padding: 8px; }
+  .board { padding: 8px; }
+  .stage-controls { right: 12px; bottom: 12px; }
+  .host-grid { grid-template-columns: 1fr; }
+  .process-columns,
+  .process-table article {
+    grid-template-columns: 1fr 60px 56px;
+  }
+  .process-track { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Ações executadas na máquina — mostradas junto da resposta que as motivou.
+   ========================================================================== */
+.turn-actions {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 9px;
+  padding: 7px 9px;
+  list-style: none;
+  border-left: 2px solid rgba(79, 224, 160, 0.5);
+  background: rgba(79, 224, 160, 0.06);
+}
+.turn-actions li {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--mint);
+  font: 9.5px var(--mono);
+  line-height: 1.45;
+}
+.turn-actions li svg {
+  flex: 0 0 auto;
+  transform: translateY(1px);
+}
+.turn-actions b {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.turn-actions span {
+  color: #7f8b98;
+  overflow-wrap: anywhere;
+}
+.turn-actions li.failed {
+  color: var(--alert);
+}
+.turn-actions li.failed span {
+  color: #c98d86;
+}
+
+/* ==========================================================================
+   Execução ao vivo — o que ele está fazendo, enquanto faz.
+   ========================================================================== */
+.console-turn.emcurso {
+  border-left: 2px solid var(--mint);
+  background: rgba(79, 224, 160, 0.05);
+}
+.console-turn .narracao {
+  color: var(--ink);
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.55;
+}
+.console-turn .pensando {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.turn-actions.rodando {
+  border-left-color: rgba(95, 216, 255, 0.5);
+  background: rgba(95, 216, 255, 0.06);
+}
+.turn-actions.rodando li {
+  color: var(--cyan);
+}
+
+/* ==========================================================================
+   Cartão de pergunta — a execução fica parada até ele ser respondido.
+   ========================================================================== */
+.pergunta-card {
+  display: grid;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 138, 76, 0.07);
+  animation: turnIn 0.24s var(--ease-out) both;
+}
+.pergunta-card.nivel-destrutivo {
+  border-color: rgba(255, 138, 76, 0.5);
+  background: rgba(255, 138, 76, 0.1);
+}
+.pergunta-card.nivel-critico {
+  border-color: rgba(255, 64, 51, 0.55);
+  background: rgba(255, 64, 51, 0.12);
+}
+
+.pergunta-topo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--amber);
+  font: 7.5px var(--mono);
+  letter-spacing: 0.18em;
+}
+.nivel-critico .pergunta-topo { color: var(--alert); }
+
+.pergunta-texto {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.pergunta-impacto {
+  margin: 0;
+  color: #b39a8c;
+  font: 11px var(--mono);
+  line-height: 1.5;
+}
+.pergunta-tecnico {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 96px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--line);
+  color: #9aa6b2;
+  font: 10px var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pergunta-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.pergunta-opcoes button {
+  display: grid;
+  gap: 2px;
+  padding: 8px 13px;
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.04);
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  text-align: left;
+  transition: background 0.2s var(--ease-out);
+}
+.pergunta-opcoes button:hover { background: rgba(255, 255, 255, 0.1); }
+.pergunta-opcoes button small {
+  color: var(--muted);
+  font-size: 8.5px;
+}
+.pergunta-opcoes button.perigo {
+  color: #120a05;
+  background: var(--amber);
+  border-color: var(--amber);
+}
+.nivel-critico .pergunta-opcoes button.perigo {
+  color: #fff;
+  background: var(--alert);
+  border-color: var(--alert);
+}
+
+.pergunta-nota {
+  margin: 0;
+  color: var(--muted);
+  font: 8.5px var(--mono);
+  line-height: 1.5;
+}
+
+/* Aviso discreto de que a voz em uso é a antiga do sistema. */
+.aviso-voz {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 138, 76, 0.3);
+  color: var(--amber);
+  font: 9px var(--mono);
+  letter-spacing: 0.1em;
+  cursor: help;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Iniciativas — o Jarvis falando primeiro.
+   Ficam sobre o palco do núcleo, sem empurrar o layout.
+   ========================================================================== */
+.iniciativas {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 4;
+  display: grid;
+  gap: 7px;
+  justify-items: stretch;
+  pointer-events: none;
+}
+.iniciativa {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  background: linear-gradient(180deg, rgba(22, 14, 10, 0.94), rgba(10, 12, 16, 0.92));
+  backdrop-filter: blur(8px);
+  animation: iniciativa-entra 320ms var(--ease-out);
+}
+@keyframes iniciativa-entra {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iniciativa { animation: none; }
+}
+
+.iniciativa.tipo-lembrete { border-left-color: var(--amber); color: var(--amber); }
+.iniciativa.tipo-rotina { border-left-color: var(--cyan); color: var(--cyan); }
+.iniciativa.tipo-vigia { border-left-color: var(--alert); color: var(--alert); }
+
+.iniciativa > div { display: grid; gap: 3px; min-width: 0; }
+.iniciativa header {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+.iniciativa header b { font: 9px var(--mono); letter-spacing: 0.16em; }
+.iniciativa header em {
+  color: var(--muted);
+  font: 9px var(--mono);
+  font-style: normal;
+}
+.iniciativa p {
+  margin: 0;
+  color: var(--ink);
+  font: 11px var(--mono);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.iniciativa small { color: var(--muted); font: 9px var(--mono); }
+.iniciativa button {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 140ms var(--ease-out);
+}
+.iniciativa button:hover { color: var(--ink); }
+
+/* ==========================================================================
+   Seletor de voz — a escolha é de ouvido, não de heurística.
+   ========================================================================== */
+.voz-painel {
+  position: absolute;
+  inset: 12px;
+  z-index: 8;
+  overflow-y: auto;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgba(20, 13, 9, 0.97), rgba(8, 10, 14, 0.97));
+  backdrop-filter: blur(10px);
+}
+.voz-painel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.voz-painel h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+}
+.voz-painel > header button {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.voz-painel > header button:hover { color: var(--ink); }
+
+.voz-dica {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font: 10px var(--mono);
+  line-height: 1.6;
+}
+.voz-painel h3 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 14px 0 7px;
+  color: var(--amber);
+  font: 9px var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.15em;
+}
+.voz-aviso {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: 10px var(--mono);
+  line-height: 1.7;
+}
+.voz-aviso b { color: var(--ink); font-weight: 500; }
+
+.voz-linha {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  background: rgba(255, 255, 255, 0.015);
+}
+.voz-linha:last-of-type { border-bottom: 1px solid var(--line); }
+.voz-linha.ativa { border-color: var(--line-strong); background: rgba(255, 138, 76, 0.07); }
+.voz-linha > div { display: grid; gap: 2px; min-width: 0; }
+.voz-linha strong { color: var(--ink); font: 11px var(--mono); font-weight: 500; }
+.voz-linha small {
+  color: var(--muted);
+  font: 8.5px var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voz-tocando { color: var(--amber); font: 9px var(--mono); font-style: normal; }
+
+.voz-ouvir,
+.voz-usar {
+  display: grid;
+  place-items: center;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: color 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+.voz-ouvir:hover,
+.voz-usar:not(:disabled):hover { color: var(--amber); border-color: var(--line-strong); }
+.voz-usar:disabled { color: var(--mint); border-color: rgba(79, 224, 160, 0.3); cursor: default; }
+
+.voz-painel > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 9px var(--mono);
+}
+.voz-painel > footer button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--amber);
+  font: 9px var(--mono);
+  cursor: pointer;
+}
+button.aviso-voz { cursor: pointer; }
+
+/* A resposta sendo escrita, antes de estar completa. */
+.rascunho {
+  margin: 0;
+  color: var(--ink);
+  font: 13px/1.65 var(--display);
+  opacity: 0.82;
+}
+/* Cursor de escrita: o texto está chegando, não travou. */
+.rascunho::after {
+  content: "▍";
+  margin-left: 2px;
+  color: var(--amber);
+  animation: piscar 1s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rascunho::after { animation: none; }
+}
+
+/* O console dentro da grade nova: cabeçalho e ações no padrão dos outros. */
+.console-painel { min-height: 0; }
+.console-painel .painel-topo .head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.console-painel .painel-topo button {
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 140ms var(--ease-out);
+}
+.console-painel .painel-topo button:hover { color: var(--azul); }
+
+/* Modificadores de painel: só o mínimo que a grade precisa para não estourar. */
+.transcricao-painel,
+.acoes-painel { min-height: 0; }
+
+/* ==========================================================================
+   Colunas laterais — leituras alinhadas à margem, sem molduras.
+
+   A tela vazia parecia proteção de tela. Isto a torna um posto de comando,
+   usando dado que o servidor já mede e que antes só existia na outra janela.
+   O que entra aqui passou por um filtro: serve para decidir alguma coisa. Uso
+   de CPU e espaço em disco mudam o que se pede ao Jarvis; a versão da BIOS, não.
+   ========================================================================== */
+.coluna {
+  position: absolute;
+  top: 74px;
+  bottom: 62px;
+  z-index: 2;
+  width: 214px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  pointer-events: none;
+  overflow: hidden;
+}
+.coluna.esquerda { left: 22px; }
+/* Começa abaixo do campo de voz, que ocupa o topo do mesmo canto. */
+.coluna.direita { right: 22px; top: 126px; align-items: flex-end; text-align: right; }
+
+/* Some antes de brigar com o núcleo: melhor sem dado que com tudo espremido. */
+@media (max-width: 1180px) { .coluna.direita { display: none; } }
+@media (max-width: 900px) { .coluna.esquerda { display: none; } }
+
+.bloco { display: flex; flex-direction: column; gap: 5px; }
+
+.bloco h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 2px;
+  color: var(--muted);
+  font: 8.5px var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+}
+
+/* Traço que abre o rótulo; acende quando há atividade. */
+.bloco h3 i {
+  flex: 1;
+  height: 1px;
+  min-width: 14px;
+  background: linear-gradient(90deg, rgba(120, 200, 255, 0.28), transparent);
+}
+.coluna.direita .bloco h3 i {
+  background: linear-gradient(270deg, rgba(120, 200, 255, 0.28), transparent);
+}
+.bloco h3 i.vivo { background: linear-gradient(90deg, var(--azul), transparent); }
+.coluna.direita .bloco h3 i.vivo { background: linear-gradient(270deg, var(--azul), transparent); }
+
+.vazio-linha {
+  margin: 0;
+  color: var(--muted);
+  font: 9.5px var(--mono);
+  opacity: 0.5;
+}
+
+/* ------------------------------ execução ---------------------------------- */
+.tarefa {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font: 9.5px var(--mono);
+  animation: entra-lateral 240ms var(--ease-out);
+}
+.tarefa.rodando { color: var(--azul); }
+.tarefa.feita { color: var(--mint); opacity: 0.55; }
+.tarefa b {
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tarefa em { font-style: normal; opacity: 0.8; }
+/* O detalhe ocupa a linha inteira abaixo, indentado. */
+.tarefa span {
+  grid-column: 1 / -1;
+  padding-left: 15px;
+  color: var(--muted);
+  opacity: 0.65;
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes entra-lateral {
+  from { opacity: 0; transform: translateX(-5px); }
+}
+@media (prefers-reduced-motion: reduce) { .tarefa { animation: none; } }
+
+/* -------------------------------- medidas --------------------------------- */
+.medida {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 7px;
+}
+.medida-nome { color: var(--muted); font: 8.5px var(--mono); letter-spacing: 0.1em; }
+.medida-trilho {
+  height: 2px;
+  background: rgba(120, 200, 255, 0.08);
+  overflow: hidden;
+}
+.medida-trilho i {
+  display: block;
+  height: 100%;
+  transition: width 400ms var(--ease-out);
+}
+.medida-trilho i.baixo { background: var(--azul); }
+.medida-trilho i.medio { background: #ffc06a; }
+.medida-trilho i.alto { background: var(--alert); }
+.medida b { font: 9.5px var(--mono); font-weight: 500; text-align: right; color: var(--ink); }
+.medida b.medio { color: #ffc06a; }
+.medida b.alto { color: var(--alert); }
+.medida em {
+  grid-column: 2 / -1;
+  color: var(--muted);
+  font: 8.5px var(--mono);
+  font-style: normal;
+  opacity: 0.6;
+  margin-top: -3px;
+}
+
+.linha-dupla {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font: 9px var(--mono);
+}
+.linha-dupla b { color: var(--ink); font-weight: 500; white-space: nowrap; }
+
+/* -------------------------------- relógio --------------------------------- */
+.relogio {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 5px;
+  color: var(--ink);
+  font: 34px var(--mono);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 26px rgba(120, 200, 255, 0.28);
+}
+.relogio small { color: var(--azul); font-size: 12px; opacity: 0.75; }
+.relogio-data {
+  color: var(--muted);
+  font: 9px var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* --------------------------------- clima ---------------------------------- */
+.clima-linha {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.clima-linha b {
+  color: var(--azul-claro);
+  font: 20px var(--mono);
+  font-weight: 500;
+  line-height: 1;
+}
+.clima-linha span {
+  color: var(--muted);
+  font: 9.5px var(--mono);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------- cotações -------------------------------- */
+.cotacao-linha {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 8px;
+  font: 9.5px var(--mono);
+}
+.cotacao-linha span { color: var(--muted); letter-spacing: 0.08em; text-align: left; }
+.cotacao-linha b { color: var(--ink); font-weight: 500; }
+.cotacao-linha em {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-style: normal;
+  min-width: 48px;
+  justify-content: flex-end;
+}
+.cotacao-linha em.sobe { color: var(--mint); }
+.cotacao-linha em.cai { color: var(--alert); }
+
+/* -------------------------------- marcado --------------------------------- */
+.marcado {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font: 9.5px var(--mono);
+}
+.marcado span {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.marcado em { font-style: normal; color: var(--azul); white-space: nowrap; }
+.marcado.tipo-vigia em { color: #ffc06a; }
+
+/* ================================ campo de voz =============================
+   Três leituras do mesmo sinal, porque cada uma responde a uma pergunta: o
+   traçado mostra a forma da fala, as barras mostram a frase inteira, e o número
+   em dB dá a medida.
+   ========================================================================== */
+.campo-voz {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 3;
+  width: 214px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+  opacity: 0.62;
+  transition: opacity 300ms var(--ease-out);
+}
+/* Ganha presença só quando há sinal de verdade para mostrar. */
+.campo-voz.estado-speaking,
+.campo-voz.estado-listening { opacity: 1; }
+
+.campo-voz canvas {
+  width: 100%;
+  height: 44px;
+  display: block;
+}
+.campo-voz-topo,
+.campo-voz-base {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font: 8px var(--mono);
+  letter-spacing: 0.18em;
+}
+.campo-voz-topo b { color: var(--azul); font-weight: 500; letter-spacing: 0.06em; }
+
+/* Barra de pico: decai devagar, senão some antes de ser lida. */
+.campo-voz-pico {
+  flex: 1;
+  height: 1px;
+  background: rgba(120, 200, 255, 0.1);
+  overflow: hidden;
+}
+.campo-voz-pico em {
+  display: block;
+  height: 100%;
+  background: var(--azul);
+  transition: width 220ms linear;
+}
+
+@media (max-width: 1180px) { .campo-voz { display: none; } }
