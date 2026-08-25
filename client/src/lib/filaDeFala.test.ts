@@ -238,3 +238,68 @@ describe("voz do servidor manda em todas", () => {
     expect(decidirFala({ ...base, vozLigada: false })).toBe("silencio");
   });
 });
+
+describe("trechos da resposta em fluxo", () => {
+  function filaComRegistro() {
+    const eventos: string[] = [];
+    const pendentes: Array<() => void> = [];
+    const fila = criarFilaDeFala({
+      falarNeural: (texto) => {
+        eventos.push(`fala:${texto}`);
+        return new Promise<void>((resolver) => pendentes.push(resolver));
+      },
+      prepararNeural: (texto) => {
+        eventos.push(`prepara:${texto}`);
+      },
+      falarLocal: () => {},
+      pararFala: () => {
+        eventos.push("corta");
+        pendentes.shift()?.();
+      },
+      vozLigada: () => true,
+      vozDoServidor: () => true,
+    });
+    return { fila, eventos, terminar: () => pendentes.shift()?.() };
+  }
+
+  it("um trecho NÃO corta o trecho anterior: espera a vez", async () => {
+    const { fila, eventos, terminar } = filaComRegistro();
+    fila.trecho("Primeira frase da resposta.");
+    fila.trecho("Segunda frase da resposta.");
+    await Promise.resolve();
+
+    expect(eventos).not.toContain("corta");
+    expect(eventos.filter((e) => e.startsWith("fala:"))).toEqual(["fala:Primeira frase da resposta."]);
+
+    terminar();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(eventos.filter((e) => e.startsWith("fala:"))).toEqual([
+      "fala:Primeira frase da resposta.",
+      "fala:Segunda frase da resposta.",
+    ]);
+  });
+
+  it("um trecho corta a narração que estiver no ar", async () => {
+    const { fila, eventos } = filaComRegistro();
+    fila.narrar("Vou conferir o disco.");
+    await Promise.resolve();
+    fila.trecho("O disco tem folga.");
+
+    expect(eventos).toContain("corta");
+  });
+
+  it("a próxima frase começa a ser sintetizada enquanto a atual toca", async () => {
+    const { fila, eventos } = filaComRegistro();
+    fila.trecho("Primeira frase da resposta.");
+    fila.trecho("Segunda frase da resposta.");
+    await Promise.resolve();
+
+    // Preparou a segunda antes de a primeira acabar.
+    expect(eventos.indexOf("prepara:Segunda frase da resposta.")).toBeGreaterThan(-1);
+    expect(eventos.indexOf("prepara:Segunda frase da resposta.")).toBeLessThan(
+      eventos.length
+    );
+    expect(eventos.filter((e) => e.startsWith("fala:"))).toHaveLength(1);
+  });
+});

@@ -13,7 +13,12 @@
  */
 
 export type DecisaoFala = "neural" | "local" | "silencio";
-export type PapelDeFala = "narracao" | "resposta" | "pergunta";
+/**
+ * "trecho" é uma frase da resposta que chegou em fluxo. Tem a prioridade de
+ * resposta para a cota, mas NÃO corta a fala em curso: a frase anterior é
+ * também resposta, e cortá-la no meio para dizer a seguinte seria gaguejar.
+ */
+export type PapelDeFala = "narracao" | "resposta" | "trecho" | "pergunta";
 export type ModoDeNarracao = "neural" | "local" | "muda";
 
 export type EstadoDeFala = {
@@ -65,7 +70,7 @@ export function decidirFala(estado: EstadoDeFala): DecisaoFala {
     return estado.cotaEstourada ? "local" : "neural";
   }
 
-  if (estado.papel === "resposta") {
+  if (estado.papel === "resposta" || estado.papel === "trecho") {
     // A resposta final tem prioridade sobre qualquer narração.
     return estado.cotaEstourada ? "local" : "neural";
   }
@@ -78,6 +83,8 @@ export function decidirFala(estado: EstadoDeFala): DecisaoFala {
 
 export type FilaDeFala = {
   narrar: (texto: string) => void;
+  /** Frase da resposta em fluxo: entra na fila sem cortar a anterior. */
+  trecho: (texto: string) => void;
   /** Prioridade máxima e fora da cota. */
   perguntar: (texto: string) => void;
   /** Corta a narração em curso. */
@@ -94,6 +101,12 @@ export type DependenciasDeFala = {
    * de ação cede a vez à resposta quando o saldo aperta.
    */
   falarNeural: (texto: string, papel: PapelDeFala) => Promise<void>;
+  /**
+   * Começa a sintetizar SEM tocar. Chamado para a próxima frase enquanto a
+   * atual ainda está no ar: sem isto, entre uma frase e a seguinte havia o
+   * tempo inteiro de uma ida ao servidor, e a resposta saía aos soluços.
+   */
+  prepararNeural?: (texto: string, papel: PapelDeFala) => void;
   falarLocal: (texto: string) => void | Promise<void>;
   pararFala: () => void;
   vozLigada: () => boolean;
@@ -133,8 +146,8 @@ export function criarFilaDeFala(deps: DependenciasDeFala): FilaDeFala {
    * A decisão é tomada na HORA DE FALAR, não na de enfileirar: a cota pode
    * estourar enquanto o item espera a vez, e o dono pode desligar a voz no meio.
    */
-  const falar = async (item: ItemDeFala): Promise<void> => {
-    const decisao = decidirFala({
+  const decidir = (item: ItemDeFala): DecisaoFala =>
+    decidirFala({
       papel: item.papel,
       neuraisGastas,
       maxNeurais,
@@ -145,7 +158,14 @@ export function criarFilaDeFala(deps: DependenciasDeFala): FilaDeFala {
       vozDoServidor: deps.vozDoServidor?.() ?? false,
     });
 
+  /** O que está no ar agora é narração? Decide se um trecho pode cortar. */
+  let noArEhNarracao = false;
+
+  const falar = async (item: ItemDeFala): Promise<void> => {
+    const decisao = decidir(item);
+
     if (decisao === "silencio") return;
+    noArEhNarracao = item.papel === "narracao";
 
     if (decisao === "local") {
       await deps.falarLocal(item.texto);
@@ -170,6 +190,11 @@ export function criarFilaDeFala(deps: DependenciasDeFala): FilaDeFala {
     try {
       while (fila.length > 0 && !encerrada) {
         const item = fila.shift()!;
+        // A próxima começa a ser sintetizada enquanto esta toca.
+        const proxima = fila[0];
+        if (proxima && decidir(proxima) === "neural") {
+          deps.prepararNeural?.(proxima.texto, proxima.papel);
+        }
         await falar(item);
       }
     } finally {
@@ -181,19 +206,31 @@ export function criarFilaDeFala(deps: DependenciasDeFala): FilaDeFala {
     if (encerrada || !texto.trim()) return;
 
     if (papel !== "narracao") {
-      // Narração que ainda não saiu perdeu a validade, e a que está no ar é
-      // cortada. `pararFala` resolve a espera do consumidor, então ele segue
-      // para o item novo em vez de travar.
+      // Narração que ainda não saiu perdeu a validade.
       fila = fila.filter((item) => item.papel !== "narracao");
-      deps.pararFala();
+      // A que está no ar é cortada — exceto por um trecho, que só corta
+      // narração: se a fala em curso já é resposta, ele espera a vez.
+      // `pararFala` resolve a espera do consumidor, então ele segue para o
+      // item novo em vez de travar.
+      if (papel !== "trecho" || noArEhNarracao) deps.pararFala();
     }
 
-    fila.push({ papel, texto });
+    const item = { papel, texto };
+    fila.push(item);
+
+    // A frase seguinte da resposta costuma chegar ENQUANTO a atual toca — e o
+    // consumidor só olha a próxima quando começa uma fala. Se ela virou a
+    // próxima da fila agora, a síntese começa agora.
+    if (consumindo && fila[0] === item && decidir(item) === "neural") {
+      deps.prepararNeural?.(item.texto, item.papel);
+    }
+
     void consumir();
   };
 
   return {
     narrar: (texto) => enfileirar("narracao", texto),
+    trecho: (texto) => enfileirar("trecho", texto),
     perguntar: (texto) => enfileirar("pergunta", texto),
     responder: (texto) => enfileirar("resposta", texto),
     marcarCotaEstourada: () => {

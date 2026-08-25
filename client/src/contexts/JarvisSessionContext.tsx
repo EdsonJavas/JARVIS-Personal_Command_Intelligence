@@ -20,6 +20,13 @@ import { trpc } from "@/lib/trpc";
 import { shouldSpeakChatReply } from "@/lib/chatResponsePolicy";
 import { lerFluxoSse } from "@/lib/sseCliente";
 import { criarFilaDeFala, type FilaDeFala } from "@/lib/filaDeFala";
+import { criarFalaEmFluxo, type FalaEmFluxo } from "@/lib/falaEmFluxo";
+import {
+  PRIMEIRO_AVISO_MS,
+  SEGUNDO_AVISO,
+  SEGUNDO_AVISO_MS,
+  proximoAviso,
+} from "@shared/frasesDeEspera";
 import { useJarvisVoice } from "@/hooks/useJarvisVoice";
 import { useMicLevel } from "@/hooks/useMicLevel";
 import { useIniciativas } from "@/hooks/useIniciativas";
@@ -157,6 +164,38 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
   const inicioRef = useRef(0);
   const filaRef = useRef<FilaDeFala | null>(null);
 
+  /** A resposta falada frase a frase, conforme chega. */
+  const fluxoRef = useRef<FalaEmFluxo>(criarFalaEmFluxo());
+  /** Alguma frase desta execução já saiu pelo fluxo? Decide como o final entra. */
+  const falouEmFluxoRef = useRef(false);
+
+  /*
+   * Avisos de espera.
+   *
+   * Silêncio depois da pergunta soa como não ter ouvido. Passado um instante
+   * sem nenhum texto, ele diz que está pensando; passado bem mais, lembra que
+   * ainda está nisso. Qualquer texto de verdade cancela os dois. Entram como
+   * narração de propósito: a resposta, quando vier, corta o aviso no ar.
+   */
+  const avisosRef = useRef<number[]>([]);
+  const contadorDeAvisosRef = useRef(0);
+
+  const cancelarAvisos = useCallback(() => {
+    for (const timer of avisosRef.current) window.clearTimeout(timer);
+    avisosRef.current = [];
+  }, []);
+
+  const armarAvisos = useCallback(() => {
+    cancelarAvisos();
+    avisosRef.current = [
+      window.setTimeout(() => {
+        filaRef.current?.narrar(proximoAviso(contadorDeAvisosRef.current));
+        contadorDeAvisosRef.current += 1;
+      }, PRIMEIRO_AVISO_MS),
+      window.setTimeout(() => filaRef.current?.narrar(SEGUNDO_AVISO), SEGUNDO_AVISO_MS),
+    ];
+  }, [cancelarAvisos]);
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -180,6 +219,8 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
     filaRef.current = criarFilaDeFala({
       falarNeural: (texto, papel) =>
         vozRef.current.speak(texto, papel === "narracao" ? "anuncio" : "resposta"),
+      prepararNeural: (texto, papel) =>
+        vozRef.current.preparar(texto, papel === "narracao" ? "anuncio" : "resposta"),
       falarLocal: (texto) => vozRef.current.falarLocal(texto),
       pararFala: () => vozRef.current.stopSpeaking(),
       vozLocalEhNatural: () => vozRef.current.vozLocalEhNatural,
@@ -206,6 +247,7 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
   });
 
   const encerrarExecucao = useCallback(() => {
+    cancelarAvisos();
     setPending(false);
     setNarracao(null);
     setRespostaParcial(null);
@@ -220,7 +262,7 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
     // o outro lado da mesma trava, e cobre o caso de o servidor sumir.
     abortRef.current?.abort();
     abortRef.current = null;
-  }, []);
+  }, [cancelarAvisos]);
 
   const aplicarEvento = useCallback(
     (evento: EventoJarvis) => {
@@ -233,17 +275,31 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
         case "pensando":
           setNarracao(null);
           setRespostaParcial(null);
+          fluxoRef.current.novaRodada();
+          // Cada rodada recomeça em silêncio; o aviso vale para todas.
+          armarAvisos();
           break;
 
         case "resposta_parcial":
+          cancelarAvisos();
           setRespostaParcial((atual) => (atual ?? "") + evento.texto);
+          // Frase fechada já vai para a voz, sem esperar o final.
+          for (const frase of fluxoRef.current.receber(evento.texto)) {
+            falouEmFluxoRef.current = true;
+            filaRef.current?.trecho(frase);
+          }
           break;
 
         case "narracao":
+          cancelarAvisos();
           // O texto era narração, não resposta: o rascunho perde a validade.
           setRespostaParcial(null);
           setNarracao(evento.texto);
-          filaRef.current?.narrar(evento.texto);
+          // Só o que o fluxo ainda não disse: sem isto, cada frase narrada
+          // que já tinha saído em fluxo era dita duas vezes.
+          for (const frase of fluxoRef.current.concluir(evento.texto)) {
+            filaRef.current?.narrar(frase);
+          }
           break;
 
         case "acao_inicio":
@@ -284,7 +340,15 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
             ...atual,
             { role: "assistant", content: evento.texto, acoes: evento.acoes },
           ]);
-          filaRef.current?.responder(evento.fala || evento.texto);
+          {
+            const faltam = fluxoRef.current.concluir(evento.fala || evento.texto);
+            for (const frase of faltam) {
+              // Com frases já no ar, o final entra na fila atrás delas. Sem
+              // nenhuma, é a resposta inteira, e ela corta a narração como antes.
+              if (falouEmFluxoRef.current) filaRef.current?.trecho(frase);
+              else filaRef.current?.responder(frase);
+            }
+          }
           encerrarExecucao();
           break;
         }
@@ -386,6 +450,8 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
       filaRef.current = criarFilaDeFala({
         falarNeural: (t, papel) =>
           vozRef.current.speak(t, papel === "narracao" ? "anuncio" : "resposta"),
+        prepararNeural: (t, papel) =>
+          vozRef.current.preparar(t, papel === "narracao" ? "anuncio" : "resposta"),
         falarLocal: (t) => vozRef.current.falarLocal(t),
         pararFala: () => vozRef.current.stopSpeaking(),
         vozLocalEhNatural: () => vozRef.current.vozLocalEhNatural,
@@ -408,10 +474,13 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
       setNarracao(null);
       setAcoesEmCurso([]);
       inicioRef.current = performance.now();
+      fluxoRef.current = criarFalaEmFluxo();
+      falouEmFluxoRef.current = false;
+      armarAvisos();
 
       void abrirFluxo({ modo: "novo", mensagens: historico });
     },
-    [abrirFluxo, responder]
+    [abrirFluxo, responder, armarAvisos]
   );
 
   useEffect(() => {
@@ -437,7 +506,7 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
     abortRef.current?.abort();
     filaRef.current?.encerrar();
     encerrarExecucao();
-  }, [encerrarExecucao]);
+  }, [encerrarExecucao, armarAvisos, cancelarAvisos]);
 
   const retryLast = useCallback(() => {
     const ultima = [...messagesRef.current].reverse().find((item) => item.role === "user");

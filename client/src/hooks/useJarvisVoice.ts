@@ -361,6 +361,43 @@ export function useJarvisVoice({ onTranscript }: UseJarvisVoiceOptions) {
     [localVoice, synthesisSupported]
   );
 
+  /*
+   * Sínteses começadas antes da hora de tocar.
+   *
+   * A resposta chega em frases, e cada uma é uma ida ao servidor. Sintetizar
+   * a próxima enquanto a atual toca esconde essa ida: quando chega a vez, o
+   * áudio já está aqui. A chave inclui a voz, porque trocar de voz no meio
+   * não pode servir áudio da voz antiga.
+   */
+  const preparadosRef = useRef(new Map<string, ReturnType<typeof speakMutateAsync>>());
+
+  const sintetizar = useCallback(
+    (text: string, prioridade: "resposta" | "anuncio") => {
+      const voz = vozDoServidorRef.current ?? undefined;
+      const chave = `${voz ?? ""} ${prioridade} ${text}`;
+      const pronta = preparadosRef.current.get(chave);
+      if (pronta) {
+        preparadosRef.current.delete(chave);
+        return pronta;
+      }
+      return speakMutateAsync({ text, prioridade, voz });
+    },
+    [speakMutateAsync]
+  );
+
+  const preparar = useCallback(
+    (text: string, prioridade: "resposta" | "anuncio" = "resposta") => {
+      const voz = vozDoServidorRef.current ?? undefined;
+      const chave = `${voz ?? ""} ${prioridade} ${text}`;
+      if (preparadosRef.current.has(chave)) return;
+      const promessa = speakMutateAsync({ text, prioridade, voz });
+      // Falha aqui não é erro de ninguém: `speak` refaz o pedido na hora.
+      promessa.catch(() => preparadosRef.current.delete(chave));
+      preparadosRef.current.set(chave, promessa);
+    },
+    [speakMutateAsync]
+  );
+
   const speak = useCallback(
     async (text: string, prioridade: "resposta" | "anuncio" = "resposta") => {
       stopAudio();
@@ -372,11 +409,7 @@ export function useJarvisVoice({ onTranscript }: UseJarvisVoiceOptions) {
       let esperarFim: Promise<void> | null = null;
 
       try {
-        const result = await speakMutateAsync({
-          text,
-          prioridade,
-          voz: vozDoServidorRef.current ?? undefined,
-        });
+        const result = await sintetizar(text, prioridade);
         if (geracaoRef.current !== geracao) return;
 
         const context = audioContextRef.current ?? new AudioContext();
@@ -447,7 +480,7 @@ export function useJarvisVoice({ onTranscript }: UseJarvisVoiceOptions) {
       // Só agora a promessa de `speak` significa "terminei de falar".
       if (esperarFim) await esperarFim;
     },
-    [speakMutateAsync, speakWithSystemVoice, stopAudio, synthesisSupported]
+    [sintetizar, speakWithSystemVoice, stopAudio, synthesisSupported]
   );
 
   const stopSpeaking = useCallback(() => {
@@ -483,6 +516,8 @@ export function useJarvisVoice({ onTranscript }: UseJarvisVoiceOptions) {
     /** Traçado da voz, 128 pontos, 128 = silêncio. Lido a cada quadro. */
     speechWaveRef,
     vozLocalEhNatural,
+    /** Comeca a sintetizar sem tocar: a proxima frase enquanto esta toca. */
+    preparar,
     /** Falar pelo servidor: neural, local, sem cota e igual em todo navegador. */
     usarServidor,
     /** Relido quando o dono fecha o seletor, para a nova voz valer na hora. */

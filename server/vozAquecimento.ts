@@ -1,4 +1,5 @@
 import { frasesFixasDeAnuncio } from "./tools/registry";
+import { frasesDeEspera } from "@shared/frasesDeEspera";
 import { synthesizeSpeech } from "./jarvisTts";
 import { estaEmCache } from "./vozCache";
 import { podeSintetizar, saldo } from "./vozOrcamento";
@@ -36,7 +37,9 @@ export function aquecerVoz(): void {
   jaRodou = true;
 
   void (async () => {
-    const frases = frasesFixasDeAnuncio();
+    // As de espera primeiro: sao as que saem quando NADA mais esta pronto, e
+    // dizer "deixa eu ver" com dois segundos de atraso e pior que calar.
+    const frases = [...frasesDeEspera(), ...frasesFixasDeAnuncio()];
     const localDisponivel = vozLocalDisponivel();
     let jaEmCache = 0;
     let sintetizadas = 0;
