@@ -120,6 +120,18 @@ export function marcarEsgotado(modelo: string): void {
   );
 }
 
+/**
+ * Um modelo riscado que respondeu está vivo: tira a marca.
+ *
+ * É a cura para marcação errada — a de ontem que sobrou, ou a de um 429 que o
+ * provedor classificou mal. Sem isto, um erro de marcação dura até a virada.
+ */
+export function desmarcar(modelo: string): void {
+  const registro = ler();
+  if (!registro.esgotados.includes(modelo)) return;
+  gravar({ dia: registro.dia, esgotados: registro.esgotados.filter((m) => m !== modelo) });
+}
+
 export function saldoDeModelos(): { total: number; livres: number; esgotados: string[] } {
   const lista = modelosDisponiveis();
   const { esgotados } = ler();

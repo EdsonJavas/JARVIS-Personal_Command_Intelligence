@@ -26,7 +26,12 @@ import { useIniciativas } from "@/hooks/useIniciativas";
 
 const MAX_LATENCIAS = 40;
 
-export type ConsoleError = { message: string; retryable: boolean };
+export type ConsoleError = {
+  message: string;
+  retryable: boolean;
+  /** Quando o provedor pediu uma pausa: o botão conta o tempo e reenvia. */
+  esperaMs?: number;
+};
 
 export type { AcaoJarvis };
 
@@ -100,10 +105,25 @@ export function useJarvisSession() {
   return session;
 }
 
-function descreverErro(codigo: string, mensagem: string, recuperavel: boolean): ConsoleError {
+function descreverErro(
+  codigo: string,
+  mensagem: string,
+  recuperavel: boolean,
+  esperaMs?: number
+): ConsoleError {
   if (codigo === "quota_exceeded") {
+    // Dois erros com o mesmo número e destinos opostos: o teto do minuto
+    // renova em segundos; o do dia, só na virada. Dizer qual é decide se o
+    // dono espera ou vai embora.
+    if (esperaMs !== undefined) {
+      return {
+        message: "O provedor pediu uma pausa. Reenvio sozinho quando o limite por minuto renovar.",
+        retryable: recuperavel,
+        esperaMs,
+      };
+    }
     return {
-      message: "Cota do provedor esgotada. Reenvie a última pergunta quando ela for renovada.",
+      message: "Cota diária do provedor esgotada em todos os modelos. Renova na virada do dia.",
       retryable: recuperavel,
     };
   }
@@ -270,7 +290,7 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
         }
 
         case "erro":
-          setError(descreverErro(evento.codigo, evento.mensagem, evento.recuperavel));
+          setError(descreverErro(evento.codigo, evento.mensagem, evento.recuperavel, evento.esperaMs));
           encerrarExecucao();
           break;
 

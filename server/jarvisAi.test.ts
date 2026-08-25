@@ -103,8 +103,15 @@ describe("generateJarvisReply", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ error: { message: "quota" } }), { status: 429 })
+        .mockImplementation(async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                details: [{ violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }],
+              },
+            }),
+            { status: 429 }
+          )
         )
     );
 

@@ -246,6 +246,9 @@ async function executar(execucaoId: string, mensagens: MensagemDeFio[]): Promise
       mensagem,
       // Cota e indisponibilidade valem nova tentativa; chave ausente, não.
       recuperavel: codigo === "quota_exceeded" || codigo === "provider_failure",
+      ...(error instanceof JarvisProviderError && error.esperaMs !== undefined
+        ? { esperaMs: error.esperaMs }
+        : {}),
     });
   }
 }

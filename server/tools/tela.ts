@@ -1,3 +1,4 @@
+import { modeloAtual } from "../jarvis/modelos";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AvaliacaoDeRisco, ToolDefinition } from "./registry";
@@ -72,7 +73,9 @@ function configuracao() {
   return {
     apiKey,
     url: base.endsWith("/chat/completions") ? base : `${base}/chat/completions`,
-    model: process.env.LLM_MODEL?.trim() || "gemini-3.6-flash",
+    // Do rodízio, como o chat: um modelo fixo aqui gastava a cota do primeiro
+    // da lista mesmo quando ele já estava esgotado.
+    model: modeloAtual(),
   };
 }
 

@@ -137,6 +137,8 @@ export type EventoJarvis =
       codigo: CodigoErroStream;
       mensagem: string;
       recuperavel: boolean;
+      /** Quanto o provedor pediu para esperar, quando disse. */
+      esperaMs?: number;
     }
   | { tipo: "cancelado"; seq: number; em: number; motivo: MotivoCancelamento };
 

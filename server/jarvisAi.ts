@@ -39,7 +39,8 @@ import {
   type RegistroDeTentativa,
 } from "./jarvis/falhas";
 import { prepararFala } from "./jarvis/fala";
-import { marcarEsgotado, modeloAtual, proximoModelo } from "./jarvis/modelos";
+import { desmarcar, marcarEsgotado, modeloAtual, proximoModelo } from "./jarvis/modelos";
+import { classificarRecusa } from "./jarvis/recusa";
 import { resumirSelecao, selecionarFerramentas } from "./jarvis/selecaoDeFerramentas";
 import { aplicarDelta, lerQuadros, montarMensagem, novoEstado } from "./jarvis/fluxoProvedor";
 import { comRecapitulacao, resumirSaida } from "./jarvis/recapitulacao";
@@ -72,7 +73,12 @@ export class JarvisProviderError extends Error {
       | "quota_exceeded"
       | "provider_failure"
       | "invalid_reply",
-    message: string
+    message: string,
+    /**
+     * Quando o provedor disse quanto esperar. Vai até o botão de reenviar, que
+     * conta o tempo em vez de deixar o dono chutar.
+     */
+    public readonly esperaMs?: number
   ) {
     super(message);
     this.name = "JarvisProviderError";
@@ -122,6 +128,22 @@ function getGeminiConfiguration() {
     // trocar ao esgotar é o que mantém o Jarvis de pé o dia inteiro.
     model: modeloAtual(),
   };
+}
+
+/** Espera que o cancelamento interrompe: o dono não fica preso num timer. */
+function dormir(ms: number, sinal?: AbortSignal): Promise<void> {
+  return new Promise((resolver) => {
+    if (sinal?.aborted) return resolver();
+    const aoAbortar = () => {
+      clearTimeout(timer);
+      resolver();
+    };
+    const timer = setTimeout(() => {
+      sinal?.removeEventListener("abort", aoAbortar);
+      resolver();
+    }, ms);
+    sinal?.addEventListener("abort", aoAbortar, { once: true });
+  });
 }
 
 function describeProviderFailure(status: number) {
@@ -238,6 +260,8 @@ async function callProvider(
      * sendo escrita.
      */
     aoTexto?: (pedaco: string) => void;
+    /** Interno: já dormiu uma vez nesta chamada. Impede laço de espera. */
+    jaEsperou?: boolean;
   }
 ): Promise<ProviderMessage> {
   const limpo = messages.map(({ _podavel, ...resto }) => resto);
@@ -288,6 +312,7 @@ async function callProvider(
   // conferido ANTES de consumir o corpo como fluxo, senão a mensagem de falha do
   // provedor viraria "quadro corrompido".
   if (emFluxo && response.ok && response.body) {
+    desmarcar(model);
     return lerEmFluxo(response.body, opcoes.aoTexto!, opcoes.sinal);
   }
 
@@ -298,17 +323,53 @@ async function callProvider(
     // no log não há como distinguir cota de modelo inválido ou instabilidade.
     console.error(`[Jarvis] Provedor respondeu ${response.status}: ${rawBody.slice(0, 400)}`);
 
-    if (response.status === 429) {
+    /*
+     * O que a recusa SIGNIFICA decide o que fazer — não o número.
+     *
+     * Medido: o rodízio dizia que os cinco modelos estavam esgotados no dia;
+     * sondados, três responderam na hora. O 429 do teto por MINUTO estava sendo
+     * riscado como teto do DIA, e uma rajada de rodadas riscava a lista inteira
+     * em segundos. Daí "reenviar" funcionar por um tempo e depois parar.
+     */
+    const recusa = classificarRecusa(response.status, rawBody);
+
+    if (recusa.tipo === "dia") {
       marcarEsgotado(model);
       const doProximo = await tentarProximo();
       if (doProximo) return doProximo;
+      throw new JarvisProviderError("quota_exceeded", describeProviderFailure(429));
     }
 
-    throw new JarvisProviderError(
-      response.status === 429 ? "quota_exceeded" : "provider_failure",
-      describeProviderFailure(response.status)
-    );
+    if (recusa.tipo === "minuto" || recusa.tipo === "instavel") {
+      // Outro modelo tem teto de minuto próprio e costuma responder já. Sem
+      // riscar ninguém: o teto renova sozinho.
+      const doProximo = await tentarProximo();
+      if (doProximo) return doProximo;
+
+      // A fila acabou. Uma espera, do tamanho que o provedor pediu, e a última
+      // tentativa no mesmo modelo — uma só, para não virar laço.
+      if (recusa.tipo === "minuto" && !opcoes.jaEsperou) {
+        await dormir(recusa.esperaMs, opcoes.sinal);
+        if (opcoes.sinal?.aborted) {
+          throw new JarvisProviderError("provider_failure", "Execução interrompida.");
+        }
+        return callProvider(endpoint, apiKey, model, messages, { ...opcoes, jaEsperou: true });
+      }
+
+      throw new JarvisProviderError(
+        recusa.tipo === "minuto" ? "quota_exceeded" : "provider_failure",
+        recusa.tipo === "minuto"
+          ? "O provedor pediu uma pausa. O limite por minuto renova sozinho."
+          : describeProviderFailure(response.status),
+        recusa.tipo === "minuto" ? recusa.esperaMs : undefined
+      );
+    }
+
+    throw new JarvisProviderError("provider_failure", describeProviderFailure(response.status));
   }
+
+  // Respondeu: se estava riscado por engano, a marca sai agora.
+  desmarcar(model);
 
   let payload: { choices?: { message?: ProviderMessage }[] } | null = null;
   try {
@@ -371,7 +432,10 @@ export async function generateJarvisReply(
   mensagens: JarvisChatMessage[],
   opcoes: OpcoesJarvis = {}
 ): Promise<RespostaDoJarvis> {
-  const { apiKey, endpoint, model } = getGeminiConfiguration();
+  const { apiKey, endpoint } = getGeminiConfiguration();
+  // Por rodada, não por turno: se o rodízio trocou de modelo no meio, a rodada
+  // seguinte segue no que respondeu em vez de pagar um 429 para redescobrir.
+  let model = modeloAtual();
   const orcamento: OrcamentoDeExecucao = { ...ORCAMENTO_PADRAO, ...opcoes.orcamento };
   const sinal = opcoes.sinal ?? new AbortController().signal;
   const emitir = opcoes.aoEvento ?? (() => {});
@@ -466,6 +530,7 @@ export async function generateJarvisReply(
 
     let mensagem: ProviderMessage;
     try {
+      model = modeloAtual();
       mensagem = await callProvider(endpoint, apiKey, model, conversa, {
         sinal,
         comFerramentas: true,
@@ -677,6 +742,7 @@ export async function generateJarvisReply(
 
   let fechamento: ProviderMessage | null = null;
   try {
+    model = modeloAtual();
     fechamento = await callProvider(
       endpoint,
       apiKey,

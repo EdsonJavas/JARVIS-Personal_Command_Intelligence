@@ -9,7 +9,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { shouldSubmitComposer } from "@/lib/chatComposer";
-import { useJarvisSession } from "@/contexts/JarvisSessionContext";
+import { useJarvisSession, type ConsoleError } from "@/contexts/JarvisSessionContext";
 
 export function JarvisConsole() {
   const {
@@ -29,6 +29,35 @@ export function JarvisConsole() {
   } = useJarvisSession();
 
   const [draft, setDraft] = useState("");
+
+  /*
+   * Contagem regressiva quando o provedor pediu uma pausa.
+   *
+   * Reenvia sozinho ao chegar em zero — UMA vez por erro. Se a nova tentativa
+   * falhar de novo, o botão volta a ser manual: reenviar automaticamente em
+   * laço a cada quinze segundos seria bater no provedor enquanto ele pede para
+   * parar.
+   */
+  const [restam, setRestam] = useState(0);
+  const erroJaReenviado = useRef<ConsoleError | null>(null);
+  useEffect(() => {
+    if (!error?.esperaMs || erroJaReenviado.current === error) {
+      setRestam(0);
+      return;
+    }
+    const fim = Date.now() + error.esperaMs;
+    const tick = () => setRestam(Math.max(0, Math.ceil((fim - Date.now()) / 1000)));
+    tick();
+    const timer = window.setInterval(() => {
+      tick();
+      if (Date.now() >= fim) {
+        window.clearInterval(timer);
+        erroJaReenviado.current = error;
+        retryLast();
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [error, retryLast]);
   const threadRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
@@ -188,8 +217,9 @@ export function JarvisConsole() {
           <div>
             <p>{error.message}</p>
             {error.retryable ? (
-              <button type="button" onClick={retryLast} disabled={pending}>
-                <RotateCcw size={12} /> Reenviar a última pergunta
+              <button type="button" onClick={retryLast} disabled={pending || restam > 0}>
+                <RotateCcw size={12} />{" "}
+                {restam > 0 ? `Reenviando em ${restam}s` : "Reenviar a última pergunta"}
               </button>
             ) : null}
           </div>
