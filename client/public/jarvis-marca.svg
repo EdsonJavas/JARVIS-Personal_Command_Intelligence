@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" width="640" height="160" role="img" aria-label="JARVIS">
+  <!-- Versão horizontal: o símbolo mais o nome, para cabeçalho e README. -->
+  <defs>
+    <radialGradient id="nucleo" cx="50%" cy="50%" r="50%">
+      <stop offset="0"    stop-color="#e6f6ff"/>
+      <stop offset="0.35" stop-color="#b9e4ff"/>
+      <stop offset="0.75" stop-color="#78c8ff"/>
+      <stop offset="1"    stop-color="#3a8fc4"/>
+    </radialGradient>
+    <linearGradient id="anel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b9e4ff"/>
+      <stop offset="1" stop-color="#3a8fc4"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(24 16) scale(0.5)">
+    <path d="M 108 41.6 A 88 88 0 1 0 148 41.6" fill="none" stroke="url(#anel)" stroke-width="7" stroke-linecap="round"/>
+    <g fill="#78c8ff"><circle cx="128" cy="216" r="4"/><circle cx="40" cy="128" r="4"/><circle cx="216" cy="128" r="4"/></g>
+    <g fill="none" stroke="#78c8ff" stroke-width="6" stroke-linecap="round">
+      <path d="M 176.4 93.6 A 60 60 0 0 1 176.4 162.4"/>
+      <path d="M 79.6 162.4 A 60 60 0 0 1 79.6 93.6"/>
+    </g>
+    <g stroke="#e6f6ff" stroke-width="6" stroke-linecap="round">
+      <line x1="88" y1="120" x2="88" y2="136"/><line x1="102" y1="110" x2="102" y2="146"/>
+      <line x1="116" y1="98" x2="116" y2="158"/><line x1="140" y1="98" x2="140" y2="158"/>
+      <line x1="154" y1="110" x2="154" y2="146"/><line x1="168" y1="120" x2="168" y2="136"/>
+    </g>
+    <circle cx="128" cy="128" r="17" fill="url(#nucleo)"/>
+    <circle cx="128" cy="128" r="26" fill="none" stroke="#78c8ff" stroke-width="2" opacity="0.5"/>
+  </g>
+
+  <!-- o nome, em caixa alta espaçada, como um rótulo de painel -->
+  <text x="176" y="96" font-family="Manrope, 'Segoe UI', sans-serif" font-weight="700" font-size="72" letter-spacing="14" fill="#e6f6ff">JARVIS</text>
+  <text x="180" y="128" font-family="'DM Mono', ui-monospace, monospace" font-size="15" letter-spacing="6" fill="#78c8ff" opacity="0.85">PERSONAL COMMAND INTELLIGENCE</text>
+</svg>

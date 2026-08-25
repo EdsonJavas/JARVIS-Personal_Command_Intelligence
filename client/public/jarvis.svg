@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="JARVIS">
+  <!--
+    JARVIS — a marca.
+
+    Um núcleo, dois anéis abertos e uma onda de voz cruzando tudo.
+    O anel externo é interrompido em cima: não é um alvo fechado, é um
+    sistema que escuta. A onda é a voz dele — a mesma que anima o canto
+    superior direito da interface. O azul é o dos primeiros filmes.
+
+    Desenhado para sobreviver a 16 px: nada mais fino que 6 unidades no
+    viewBox de 256, e o núcleo continua legível mesmo com a onda apagada.
+  -->
+  <defs>
+    <radialGradient id="nucleo" cx="50%" cy="50%" r="50%">
+      <stop offset="0"    stop-color="#e6f6ff"/>
+      <stop offset="0.35" stop-color="#b9e4ff"/>
+      <stop offset="0.75" stop-color="#78c8ff"/>
+      <stop offset="1"    stop-color="#3a8fc4"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0.55" stop-color="#78c8ff" stop-opacity="0.35"/>
+      <stop offset="1"    stop-color="#78c8ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="anel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b9e4ff"/>
+      <stop offset="1" stop-color="#3a8fc4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- fundo: o mesmo "void" da interface, com cantos para ícone de app -->
+  <rect width="256" height="256" rx="56" fill="#05080d"/>
+
+  <!-- halo difuso atrás de tudo -->
+  <circle cx="128" cy="128" r="96" fill="url(#halo)"/>
+
+  <!-- anel externo, aberto em cima (escuta) -->
+  <path d="M 108 41.6
+           A 88 88 0 1 0 148 41.6"
+        fill="none" stroke="url(#anel)" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- marcas de escala no anel: 4 pontos cardeais menos o do topo -->
+  <g fill="#78c8ff">
+    <circle cx="128" cy="216" r="4"/>
+    <circle cx="40"  cy="128" r="4"/>
+    <circle cx="216" cy="128" r="4"/>
+  </g>
+
+  <!-- anel interno, girado: dois arcos opostos -->
+  <g fill="none" stroke="#78c8ff" stroke-width="6" stroke-linecap="round">
+    <path d="M 176.4 93.6 A 60 60 0 0 1 176.4 162.4"/>
+    <path d="M 79.6 162.4 A 60 60 0 0 1 79.6 93.6"/>
+  </g>
+
+  <!-- onda de voz: atravessa o núcleo, do centro para as bordas -->
+  <g stroke="#e6f6ff" stroke-width="6" stroke-linecap="round" opacity="0.95">
+    <line x1="88"  y1="120" x2="88"  y2="136"/>
+    <line x1="102" y1="110" x2="102" y2="146"/>
+    <line x1="116" y1="98"  x2="116" y2="158"/>
+    <line x1="140" y1="98"  x2="140" y2="158"/>
+    <line x1="154" y1="110" x2="154" y2="146"/>
+    <line x1="168" y1="120" x2="168" y2="136"/>
+  </g>
+
+  <!-- núcleo -->
+  <circle cx="128" cy="128" r="17" fill="url(#nucleo)"/>
+  <circle cx="128" cy="128" r="17" fill="none" stroke="#05080d" stroke-width="3" opacity="0.6"/>
+  <circle cx="128" cy="128" r="26" fill="none" stroke="#78c8ff" stroke-width="2" opacity="0.5"/>
+</svg>
