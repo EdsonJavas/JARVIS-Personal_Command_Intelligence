@@ -44,6 +44,15 @@ describe("sanear item", () => {
 });
 
 describe("cartões", () => {
+  it("NADA some sozinho: cinquenta cartões depois, o primeiro continua lá", () => {
+    const primeiro = adicionarCartao({ titulo: "primeiro", itens: [{ tipo: "texto", texto: "x" }] })!;
+    for (let i = 0; i < 50; i += 1) {
+      adicionarCartao({ titulo: `n${i}`, itens: [{ tipo: "texto", texto: "y" }] });
+    }
+    expect(listarCartoes().some((c) => c.id === primeiro.id)).toBe(true);
+    expect(listarCartoes()).toHaveLength(51);
+  });
+
   it("cartão sem item válido é recusado", () => {
     expect(adicionarCartao({ titulo: "vazio", itens: [{ tipo: "metrica" }] })).toBeNull();
   });

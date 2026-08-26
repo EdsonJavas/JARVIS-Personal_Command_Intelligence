@@ -19,7 +19,11 @@ export type { Cartao, ItemDoCartao, TomDoCartao };
  * estava na tela.
  */
 
-const MAX_CARTOES = 14;
+/*
+ * Sem teto. O dono foi categórico: o que está no painel não some JAMAIS, só
+ * se ele ou o Jarvis remover. Um limite que descarta o mais antigo é
+ * exatamente "sumir sem ninguém pedir", ainda que a intenção fosse arrumação.
+ */
 const MAX_ITENS = 24;
 
 const PASTA_DADOS = process.env.JARVIS_DATA_DIR?.trim() || "data";
@@ -184,14 +188,8 @@ export function adicionarCartao(entrada: {
     criadoEm: new Date().toISOString(),
   };
 
-  // O mais recente entra na frente. Ao estourar, cai o mais antigo NÃO fixado.
-  const todos = [cartao, ...registro.cartoes];
-  while (todos.length > MAX_CARTOES) {
-    const indice = todos.map((c) => c.fixado).lastIndexOf(false);
-    if (indice === -1) break;
-    todos.splice(indice, 1);
-  }
-  registro.cartoes = todos;
+  // O mais recente entra na frente. Nenhum sai daqui por conta própria.
+  registro.cartoes = [cartao, ...registro.cartoes];
   gravar();
   return cartao;
 }
