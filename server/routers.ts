@@ -15,6 +15,7 @@ import { collectDevLife } from "./devLife";
 import { atualizarCartao, listarCartoes, removerCartao } from "./board";
 import { esquecer, historicoDe, listarMemorias, restaurar } from "./memoria/repositorio";
 import { listarAcoes } from "./acoes/repositorio";
+import { hoje } from "./dia/hoje";
 import { modeloAtual, saldoDeModelos } from "./jarvis/modelos";
 import { saldo as saldoDeVoz } from "./vozOrcamento";
 import { servidoresConectados } from "./mcp/ponte";
@@ -113,6 +114,8 @@ export const appRouter = router({
     world: protectedProcedure.query(() => collectWorld()),
     dev: protectedProcedure.query(() => collectDevLife()),
     cards: protectedProcedure.query(() => listarCartoes()),
+    /** O dia do dono: agenda e e-mail pelo Google, briefing redigido aqui. */
+    hoje: protectedProcedure.query(() => hoje()),
     removeCard: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ input }) => ({ removido: removerCartao(input.id) })),

@@ -209,3 +209,35 @@ export async function encerrarServidores(): Promise<void> {
 export function servidoresConectados(): string[] {
   return conexoes.map(({ servidor }) => servidor.nome);
 }
+
+/**
+ * Chama uma ferramenta de um servidor DIRETO, sem passar pelo modelo.
+ *
+ * Existe para o painel montar o dia do dono — agenda e e-mail — sem gastar
+ * uma rodada de cota nem esperar um turno. Só leitura passa por aqui: quem
+ * escreve numa conta de verdade continua obrigado a atravessar a trava de
+ * risco do laço, e este caminho recusa ferramenta arriscada por construção.
+ */
+export async function chamarFerramenta(
+  servidorNome: string,
+  ferramenta: string,
+  argumentos: Record<string, unknown>,
+  prazoMs = 15_000
+): Promise<{ texto: string; ok: boolean } | null> {
+  const conexao = conexoes.find(({ servidor }) => servidor.nome === servidorNome);
+  if (!conexao) return null;
+  if (ehArriscada(conexao.servidor, ferramenta)) {
+    return { texto: `"${ferramenta}" é arriscada e não pode ser chamada sem o dono.`, ok: false };
+  }
+  try {
+    const resultado = await conexao.cliente.callTool(
+      { name: ferramenta, arguments: argumentos },
+      undefined,
+      { timeout: prazoMs }
+    );
+    const falhou = Boolean((resultado as { isError?: boolean })?.isError);
+    return { texto: comoTexto(resultado), ok: !falhou };
+  } catch (erro) {
+    return { texto: String(erro).slice(0, 200), ok: false };
+  }
+}

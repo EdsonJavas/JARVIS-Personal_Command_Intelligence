@@ -1,13 +1,14 @@
-// A MESA do Jarvis — segunda janela, para tela grande.
+// A MESA do Jarvis — segunda janela.
 //
-// Nada que a janela principal já mostra: sem máquina, relógio, clima nem
-// cotação. Quatro perguntas, quatro lugares. Ele está fazendo algo? — a faixa
-// no topo, respondível dali. O que me deixou? — o centro, um documento
-// contínuo que nunca perde nada sozinho. O que vai fazer, fez e sabe? — a
-// direita. Onde está meu trabalho? — a esquerda.
+// Uma página que ROLA, em seções com cabeçalho forte, sem caixas. De cima
+// para baixo, na ordem em que o dono decide o dia: o que está acontecendo
+// agora; o dia dele (agenda e e-mails que pedem resposta, vindos do Google
+// pela ponte MCP) com o briefing que o servidor redige; o que o Jarvis
+// deixou — o documento; os projetos que pedem atenção; o que ele vai fazer e
+// fez; o que aprendeu.
 //
-// Sem cards. Espaço, fio de cabelo e tipografia separam as coisas.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+// Nada que a janela principal já mostra: sem máquina, relógio, clima.
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
@@ -15,13 +16,12 @@ import type { Cartao, ItemDoCartao } from "@shared/painel";
 
 const POLL_CARTOES_MS = 3000;
 const POLL_DEV_MS = 60 * 1000;
-const POLL_AQUECENDO_MS = 3000;
 const POLL_EXECUCAO_MS = 2000;
 const POLL_ESTADO_MS = 15 * 1000;
+const POLL_HOJE_MS = 60 * 1000;
 const POLL_COMPROMISSOS_MS = 30 * 1000;
 const POLL_ACOES_MS = 5000;
 const POLL_MEMORIAS_MS = 15 * 1000;
-const GRUPOS_DE_FEZ = 10;
 
 /* --------------------------------- formato --------------------------------- */
 
@@ -36,7 +36,6 @@ function haQuantoTempo(iso: string | null): string {
   const d = Math.floor(h / 24);
   return d < 30 ? `há ${d} d` : `há ${Math.floor(d / 30)} mês`;
 }
-
 function emQuanto(iso: string | null): string {
   if (!iso) return "";
   const diff = new Date(iso).getTime() - Date.now();
@@ -44,38 +43,18 @@ function emQuanto(iso: string | null): string {
   const min = Math.round(diff / 60000);
   if (min < 60) return `em ${min} min`;
   const h = Math.floor(min / 60);
-  if (h < 24) return `em ${h} h`;
-  return `em ${Math.floor(h / 24)} d`;
+  return h < 24 ? `em ${h} h` : `em ${Math.floor(h / 24)} d`;
 }
-
-function horaCurta(iso: string) {
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function diaHora(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
-}
-
-function minutosParaHora(min: number | null) {
-  if (min === null) return "";
-  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-}
-
+const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const diaHora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
+const minutosParaHora = (min: number | null) => (min === null ? "" : `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`);
 const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 function diasDaSemana(texto: string | null) {
   if (!texto) return "todo dia";
   const dias = texto.split(",").map(Number).filter((n) => n >= 0 && n <= 6);
   if (dias.length === 0 || dias.length === 7) return "todo dia";
-  const semana = [1, 2, 3, 4, 5];
-  if (semana.every((d) => dias.includes(d)) && dias.length === 5) return "seg–sex";
+  if (dias.length === 5 && [1, 2, 3, 4, 5].every((d) => dias.includes(d))) return "seg–sex";
   return dias.map((d) => DIAS[d]).join(" ");
-}
-
-function tamanho(bytes: number) {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
 }
 
 /** Ações destrutivas em dois cliques: o primeiro só pergunta. */
@@ -97,91 +76,75 @@ function useConfirmacao() {
   };
 }
 
-function Bloco({ titulo, extra, children, className = "" }: { titulo: string; extra?: ReactNode; children: ReactNode; className?: string }) {
+/* ----------------------------------- peças ---------------------------------- */
+
+function Secao({ id, rotulo, titulo, resumo, extra, children }: { id: string; rotulo: string; titulo: string; resumo?: string; extra?: ReactNode; children: ReactNode }) {
   return (
-    <section className={className}>
-      <h2 className="mesa-bloco-titulo">
-        <span>{titulo}</span>
-        {extra ? <em>{extra}</em> : null}
-      </h2>
+    <section className="ms-secao" id={id}>
+      <header className="ms-cabecalho">
+        <small>{rotulo}</small>
+        <div>
+          <h2>{titulo}</h2>
+          {extra ? <div className="ms-extra">{extra}</div> : null}
+        </div>
+        {resumo ? <p>{resumo}</p> : null}
+      </header>
       {children}
     </section>
   );
 }
 
-/* ------------------------------ itens do documento ------------------------- */
+function Pilula({ children, tom = "" }: { children: ReactNode; tom?: string }) {
+  return <i className={`ms-pilula ${tom}`}>{children}</i>;
+}
 
 function Item({ item, indice, aoMarcar }: { item: ItemDoCartao; indice: number; aoMarcar: (i: number, feito: boolean) => void }) {
   switch (item.tipo) {
     case "metrica":
       return (
         <div className={`it-metrica ${item.tom ? `tom-${item.tom}` : ""}`}>
-          <small className="rotulo">{item.rotulo}</small>
           <b>
             {item.valor}
             {item.unidade ? <span>{item.unidade}</span> : null}
             {item.tendencia ? <i>{item.tendencia === "sobe" ? "↑" : item.tendencia === "desce" ? "↓" : "→"}</i> : null}
           </b>
+          <small>{item.rotulo}</small>
         </div>
       );
     case "progresso":
       return (
         <div className="it-progresso">
-          <div>
-            <span>{item.rotulo}</span>
-            <b>{item.valor}%</b>
-          </div>
-          <div className="trilho">
-            <i style={{ width: `${item.valor}%` }} />
-          </div>
+          <div><span>{item.rotulo}</span><b>{item.valor}%</b></div>
+          <div className="trilho"><i style={{ width: `${item.valor}%` }} /></div>
           {item.texto ? <p>{item.texto}</p> : null}
         </div>
       );
     case "link":
       return (
         <a className="it-link" href={item.url} target="_blank" rel="noreferrer noopener">
-          {item.rotulo ? <small className="rotulo">{item.rotulo}</small> : null}
+          {item.rotulo ? <small>{item.rotulo}</small> : null}
           <span>{item.texto} ↗</span>
         </a>
       );
     case "lista":
       return (
         <div className="it-lista">
-          {item.rotulo ? <small className="rotulo">{item.rotulo}</small> : null}
-          <ul>
-            {item.itens.map((l, i) => (
-              <li key={i}>{l}</li>
-            ))}
-          </ul>
+          {item.rotulo ? <small>{item.rotulo}</small> : null}
+          <ul>{item.itens.map((l, i) => <li key={i}>{l}</li>)}</ul>
         </div>
       );
     case "passo":
       return (
         <button type="button" className={`it-passo ${item.feito ? "feito" : ""}`} onClick={() => aoMarcar(indice, !item.feito)}>
-          <i>{item.feito ? "✓" : ""}</i>
-          <span>{item.texto}</span>
+          <i>{item.feito ? "✓" : ""}</i><span>{item.texto}</span>
         </button>
       );
     case "tabela":
       return (
         <div className="it-tabela">
           <table>
-            <thead>
-              <tr>
-                {item.colunas.map((c) => (
-                  <th key={c}>{c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {item.linhas.map((linha, i) => (
-                <tr key={i}>
-                  {linha.map((celula, j) => (
-                    <td key={j}>{celula}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
+            <thead><tr>{item.colunas.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+            <tbody>{item.linhas.map((l, i) => <tr key={i}>{l.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody>
           </table>
         </div>
       );
@@ -190,16 +153,10 @@ function Item({ item, indice, aoMarcar }: { item: ItemDoCartao; indice: number; 
     case "separador":
       return <div className="it-separador">{item.rotulo ? <span>{item.rotulo}</span> : null}</div>;
     default:
-      return (
-        <p className="it-texto">
-          {item.rotulo ? <small className="rotulo">{item.rotulo}</small> : null}
-          {item.texto}
-        </p>
-      );
+      return <p className="it-texto">{item.rotulo ? <small>{item.rotulo}</small> : null}{item.texto}</p>;
   }
 }
 
-/** Métricas seguidas ficam lado a lado; o resto, em fluxo. */
 function Itens({ itens, aoMarcar }: { itens: ItemDoCartao[]; aoMarcar: (i: number, feito: boolean) => void }) {
   const blocos: ReactNode[] = [];
   let i = 0;
@@ -210,55 +167,16 @@ function Itens({ itens, aoMarcar }: { itens: ItemDoCartao[]; aoMarcar: (i: numbe
         grupo.push(<Item key={i} item={itens[i]} indice={i} aoMarcar={aoMarcar} />);
         i += 1;
       }
-      blocos.push(
-        <div key={`m${i}`} className="it-metricas">
-          {grupo}
-        </div>
-      );
+      blocos.push(<div key={`m${i}`} className="it-metricas">{grupo}</div>);
     } else {
       blocos.push(<Item key={i} item={itens[i]} indice={i} aoMarcar={aoMarcar} />);
       i += 1;
     }
   }
-  return <div className="mesa-itens">{blocos}</div>;
+  return <div className="ms-itens">{blocos}</div>;
 }
 
 type Filtro = "tudo" | "fixados" | "passos" | "alerta";
-
-function Secao({ cartao, confirmacao, aoFixar, aoRemover, aoMarcar }: {
-  cartao: Cartao;
-  confirmacao: ReturnType<typeof useConfirmacao>;
-  aoFixar: () => void;
-  aoRemover: () => void;
-  aoMarcar: (i: number, feito: boolean) => void;
-}) {
-  const passos = cartao.itens.filter((i) => i.tipo === "passo");
-  const feitos = passos.filter((i) => i.tipo === "passo" && i.feito).length;
-  const chave = `cartao-${cartao.id}`;
-  return (
-    <article className={`mesa-secao tom-${cartao.tom}`}>
-      <header>
-        <h3>{cartao.titulo}</h3>
-        <span className="meta">
-          <span>{haQuantoTempo(cartao.criadoEm)}</span>
-          <span>#{cartao.id}</span>
-          {passos.length ? <span>{feitos}/{passos.length} passos</span> : null}
-        </span>
-        <span className="acoes">
-          <button type="button" className="acao" onClick={aoFixar}>
-            {cartao.fixado ? "soltar" : "fixar"}
-          </button>
-          <button type="button" className={`acao ${confirmacao.armada(chave) ? "confirmar" : ""}`} onClick={() => confirmacao.pedir(chave, aoRemover)}>
-            {confirmacao.armada(chave) ? "confirmar?" : "remover"}
-          </button>
-        </span>
-      </header>
-      {cartao.subtitulo ? <p className="sub">{cartao.subtitulo}</p> : null}
-      <Itens itens={cartao.itens} aoMarcar={aoMarcar} />
-      {cartao.nota ? <footer>{cartao.nota}</footer> : null}
-    </article>
-  );
-}
 
 /* ---------------------------------- a mesa ---------------------------------- */
 
@@ -268,15 +186,12 @@ export default function Dashboard() {
   const confirmacao = useConfirmacao();
 
   const { data: cartoes } = trpc.board.cards.useQuery(undefined, { refetchInterval: POLL_CARTOES_MS, refetchOnWindowFocus: false });
-  const { data: dev } = trpc.board.dev.useQuery(undefined, {
-    refetchInterval: (q) => (!q.state.data || q.state.data.repositorios.length === 0 ? POLL_AQUECENDO_MS : POLL_DEV_MS),
-    refetchOnWindowFocus: false,
-    retry: 1,
-  });
+  const { data: dev } = trpc.board.dev.useQuery(undefined, { refetchInterval: POLL_DEV_MS, refetchOnWindowFocus: false, retry: 1 });
+  const { data: hoje } = trpc.board.hoje.useQuery(undefined, { refetchInterval: POLL_HOJE_MS, refetchOnWindowFocus: false, retry: 1 });
   const { data: execucao } = trpc.jarvis.execucaoAtiva.useQuery(undefined, { refetchInterval: POLL_EXECUCAO_MS, refetchOnWindowFocus: false, retry: false });
   const { data: estado } = trpc.jarvis.estado.useQuery(undefined, { refetchInterval: POLL_ESTADO_MS, refetchOnWindowFocus: false, retry: 1 });
   const { data: compromissos } = trpc.compromissos.proximos.useQuery(undefined, { refetchInterval: POLL_COMPROMISSOS_MS, refetchOnWindowFocus: false, retry: 1 });
-  const { data: acoes } = trpc.jarvis.acoes.useQuery({ limite: 100 }, { refetchInterval: POLL_ACOES_MS, refetchOnWindowFocus: false, retry: 1 });
+  const { data: acoes } = trpc.jarvis.acoes.useQuery({ limite: 60 }, { refetchInterval: POLL_ACOES_MS, refetchOnWindowFocus: false, retry: 1 });
   const { data: memorias } = trpc.memoria.listar.useQuery(undefined, { refetchInterval: POLL_MEMORIAS_MS, refetchOnWindowFocus: false, retry: 1 });
 
   const invalidarCartoes = { onSuccess: () => utils.board.cards.invalidate() };
@@ -290,373 +205,272 @@ export default function Dashboard() {
   const interromper = trpc.jarvis.cancelarExecucao.useMutation({ onSuccess: () => utils.jarvis.execucaoAtiva.invalidate() });
 
   const [filtro, setFiltro] = useState<Filtro>("tudo");
-  const [gruposVisiveis, setGruposVisiveis] = useState(GRUPOS_DE_FEZ);
   const [acaoAberta, setAcaoAberta] = useState<number | null>(null);
+  const [mostrarLimpos, setMostrarLimpos] = useState(false);
   const [mostrarApagadas, setMostrarApagadas] = useState(false);
-  const [versoesDe, setVersoesDe] = useState<number | null>(null);
   const [respostaTexto, setRespostaTexto] = useState("");
-  const [, tique] = useState(0);
-  const tiqueRef = useRef(0);
+  const [agora, setAgora] = useState(() => Date.now());
   useEffect(() => {
-    const t = window.setInterval(() => tique((tiqueRef.current += 1)), 1000);
+    const t = window.setInterval(() => setAgora(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, []);
 
-  const { data: versoes } = trpc.memoria.historico.useQuery({ id: versoesDe ?? 0 }, { enabled: versoesDe !== null, refetchOnWindowFocus: false });
-
-  /* documento: fixados primeiro, depois por criação */
   const documento = useMemo(() => {
-    const todos = [...(cartoes ?? [])];
     const passa = (c: Cartao) =>
-      filtro === "tudo" ? true
-      : filtro === "fixados" ? c.fixado
-      : filtro === "passos" ? c.itens.some((i) => i.tipo === "passo" && !i.feito)
-      : c.tom === "alerta" || c.tom === "atencao";
-    const filtrados = todos.filter(passa);
+      filtro === "tudo" ? true : filtro === "fixados" ? c.fixado : filtro === "passos" ? c.itens.some((i) => i.tipo === "passo" && !i.feito) : c.tom === "alerta" || c.tom === "atencao";
     const porData = (a: Cartao, b: Cartao) => b.criadoEm.localeCompare(a.criadoEm);
-    return {
-      fixados: filtrados.filter((c) => c.fixado).sort(porData),
-      demais: filtrados.filter((c) => !c.fixado).sort(porData),
-    };
+    const f = (cartoes ?? []).filter(passa);
+    return [...f.filter((c) => c.fixado).sort(porData), ...f.filter((c) => !c.fixado).sort(porData)];
   }, [cartoes, filtro]);
   const passosAbertos = (cartoes ?? []).reduce((s, c) => s + c.itens.filter((i) => i.tipo === "passo" && !i.feito).length, 0);
 
-  /* projetos */
   const repos = useMemo(() => {
     const todos = dev?.repositorios ?? [];
     const pend = (r: (typeof todos)[number]) => r.alterados + r.naoRastreados + r.aFrente + r.atras;
-    return [...todos].sort((a, b) => pend(b) - pend(a) || (b.ultimoCommitEm ?? "").localeCompare(a.ultimoCommitEm ?? ""));
+    const ordenados = [...todos].sort((a, b) => pend(b) - pend(a) || (b.ultimoCommitEm ?? "").localeCompare(a.ultimoCommitEm ?? ""));
+    return { sujos: ordenados.filter((r) => pend(r) > 0), limpos: ordenados.filter((r) => pend(r) === 0) };
   }, [dev]);
-  const comPendencia = repos.filter((r) => r.alterados + r.naoRastreados + r.aFrente + r.atras > 0).length;
 
-  /* fez: agrupado por execução */
   const grupos = useMemo(() => {
     const mapa = new Map<string, NonNullable<typeof acoes>>();
-    for (const a of acoes ?? []) {
-      const g = mapa.get(a.execucaoId) ?? [];
-      g.push(a);
-      mapa.set(a.execucaoId, g);
-    }
-    return [...mapa.values()];
+    for (const a of acoes ?? []) mapa.set(a.execucaoId, [...(mapa.get(a.execucaoId) ?? []), a]);
+    return [...mapa.values()].slice(0, 8);
   }, [acoes]);
-  const hoje = new Date().toDateString();
-  const fezHoje = (acoes ?? []).filter((a) => new Date(a.em).toDateString() === hoje).length;
 
-  /* vai fazer: disparados/abertos primeiro, depois por proximaEm */
-  const agenda = useMemo(
-    () =>
-      [...(compromissos ?? [])].sort((a, b) => {
-        const pa = a.tipo === "vigia" && !a.armado ? 0 : 1;
-        const pb = b.tipo === "vigia" && !b.armado ? 0 : 1;
-        if (pa !== pb) return pa - pb;
-        return (a.proximaEm ?? "9").localeCompare(b.proximaEm ?? "9");
-      }),
-    [compromissos]
-  );
-
+  const agenda = useMemo(() => [...(compromissos ?? [])].sort((a, b) => (a.proximaEm ?? "9").localeCompare(b.proximaEm ?? "9")), [compromissos]);
   const memoriasVisiveis = (memorias ?? []).filter((m) => mostrarApagadas || !m.esquecida);
   const apagadas = (memorias ?? []).filter((m) => m.esquecida).length;
 
-  if (loading || !user) {
-    return (
-      <main className="painel">
-        <div className="boot-state">ABRINDO A MESA…</div>
-      </main>
-    );
-  }
+  if (loading || !user) return <main className="mesa"><div className="boot-state">ABRINDO A MESA…</div></main>;
 
   const pergunta = execucao?.pergunta ?? null;
-  const segundosDeExecucao = execucao ? Math.max(0, Math.round((Date.now() - execucao.iniciadaEm) / 1000)) : 0;
+  const segundos = execucao ? Math.max(0, Math.round((agora - execucao.iniciadaEm) / 1000)) : 0;
+  const eventos = [...(hoje?.agenda.eventos ?? [])].sort((a, b) => (a.inicio ?? "9").localeCompare(b.inicio ?? "9"));
+  const emailsQuePedem = (hoje?.email.naoLidos ?? []).filter((e) => e.pedeResposta);
+  const outrosEmails = (hoje?.email.naoLidos ?? []).filter((e) => !e.pedeResposta);
 
   return (
-    <main className="painel">
-      {/* ------------------------------------------------------------ faixa */}
-      <header className="mesa-faixa">
-        <span className="marca">JARVIS · MESA</span>
+    <main className="mesa">
+      <div className="mesa-atmosfera" aria-hidden="true" />
 
+      {/* ------------------------------------------------------------ topo */}
+      <header className="mesa-topo">
+        <span className="marca">JARVIS <i>//</i> MESA</span>
         {pergunta ? (
           <span className="estado pergunta">
-            <i>?</i>
+            <b className="pulso" />
             <q>{pergunta.pergunta}</q>
-            {pergunta.nivel !== "normal" ? <span>{pergunta.nivel}</span> : null}
-            <span>{segundosDeExecucao}s</span>
+            {pergunta.nivel !== "normal" ? <Pilula tom="aceso">{pergunta.nivel}</Pilula> : null}
             {pergunta.tipo === "texto" ? (
-              <input
-                value={respostaTexto}
-                placeholder="responder…"
-                onChange={(e) => setRespostaTexto(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && respostaTexto.trim()) {
-                    responder.mutate({ perguntaId: pergunta.id, texto: respostaTexto.trim(), origem: "clique" });
-                    setRespostaTexto("");
-                  }
-                }}
-              />
+              <input value={respostaTexto} placeholder="responder…" onChange={(e) => setRespostaTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && respostaTexto.trim()) { responder.mutate({ perguntaId: pergunta.id, texto: respostaTexto.trim(), origem: "clique" }); setRespostaTexto(""); } }} />
             ) : (
-              <span className="opcoes">
-                {(pergunta.opcoes ?? []).map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    className={`acao ${o.perigo ? "perigo" : ""}`}
-                    onClick={() => responder.mutate({ perguntaId: pergunta.id, opcaoId: o.id, origem: "clique" })}
-                  >
-                    {o.rotulo}
-                  </button>
-                ))}
-              </span>
+              (pergunta.opcoes ?? []).map((o) => (
+                <button key={o.id} type="button" className={`acao ${o.perigo ? "perigo" : ""}`} onClick={() => responder.mutate({ perguntaId: pergunta.id, opcaoId: o.id, origem: "clique" })}>{o.rotulo}</button>
+              ))
             )}
-            <button type="button" className="acao" onClick={() => interromper.mutate({ execucaoId: execucao!.execucaoId })}>
-              interromper
-            </button>
+            <button type="button" className="acao" onClick={() => interromper.mutate({ execucaoId: execucao!.execucaoId })}>interromper</button>
           </span>
         ) : execucao ? (
-          <span className="estado">
-            <i>●</i>
-            <span>{execucao.ferramentaAtual ?? "pensando"}</span>
-            <span>há {segundosDeExecucao}s</span>
-            <button type="button" className="acao" onClick={() => interromper.mutate({ execucaoId: execucao.execucaoId })}>
-              interromper
-            </button>
-          </span>
+          <span className="estado"><b className="pulso" />{execucao.ferramentaAtual ?? "pensando"} · há {segundos}s<button type="button" className="acao" onClick={() => interromper.mutate({ execucaoId: execucao.execucaoId })}>interromper</button></span>
         ) : (
-          <span className="estado">repouso</span>
+          <span className="estado repouso"><b className="pulso quieto" />repouso</span>
         )}
-
-        <span className="contadores">
-          {cartoes?.length ?? 0} registros · {compromissos?.length ?? 0} compromissos · {(memorias ?? []).filter((m) => !m.esquecida).length} memórias
-        </span>
-
         {estado ? (
           <span className="ligacoes">
+            {estado.ligacoes.map((l) => <span key={l.nome} className={`led ${l.ligado ? "" : "off"}`} title={l.ligado ? undefined : estado.motivoDeAusencia ?? undefined}>{l.nome}</span>)}
+            <span className="sep" />
             <span>{estado.modelo}</span>
-            <span className={estado.modelos.livres === 0 ? "esgotado" : ""}>
-              modelos {estado.modelos.livres}/{estado.modelos.total}
-              {estado.modelos.livres === 0 ? " — esgotados hoje" : ""}
-            </span>
-            <span>voz {estado.voz.restam} restam</span>
-            {estado.ligacoes.map((l) => (
-              <span key={l.nome} className={l.ligado ? "ok" : "falta"} title={l.ligado ? undefined : estado.motivoDeAusencia ?? undefined}>
-                {l.nome}
-              </span>
-            ))}
+            <span className={estado.modelos.livres === 0 ? "aceso" : ""}>modelos {estado.modelos.livres}/{estado.modelos.total}</span>
+            <span className={`led ${estado.voz.restam <= 3 ? "warn" : ""}`}>voz {estado.voz.restam}</span>
           </span>
         ) : null}
       </header>
 
-      {/* ------------------------------------------------------------ projetos */}
-      <aside className="mesa-coluna">
-        <Bloco titulo="Projetos" extra={repos.length ? (comPendencia ? `${comPendencia} com pendência` : "tudo limpo") : undefined}>
-          {repos.length ? (
-            <table className="mesa-repos">
-              <thead>
-                <tr>
-                  <th>repo</th>
-                  <th>ramo</th>
-                  <th>pend.</th>
-                  <th>último commit</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {repos.map((r) => {
-                  const sujo = r.alterados + r.naoRastreados + r.aFrente + r.atras > 0;
-                  const pend = sujo
-                    ? [r.alterados ? `${r.alterados}±` : "", r.naoRastreados ? `${r.naoRastreados}?` : "", r.aFrente ? `↑${r.aFrente}` : "", r.atras ? `↓${r.atras}` : ""].filter(Boolean).join(" ")
-                    : "·";
+      {/* ------------------------------------------------------------ hoje */}
+      <Secao id="hoje" rotulo="01 · HOJE" titulo={new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })} resumo={hoje?.briefing}>
+        {hoje ? (
+          <div className="ms-numeros">
+            <div><b>{hoje.numeros.reunioes}</b><span>na agenda</span></div>
+            <div><b>{hoje.numeros.emailsQuePedem}</b><span>e-mails pedem resposta</span></div>
+            <div><b>{hoje.numeros.reposComPendencia}</b><span>repos com pendência</span></div>
+            <div><b>{hoje.numeros.compromissos}</b><span>lembretes comigo</span></div>
+          </div>
+        ) : null}
+        <div className="ms-duas">
+          <div>
+            <h3 className="ms-sub">Agenda {hoje && !hoje.agenda.ligada ? <Pilula>google desligado</Pilula> : null}</h3>
+            {eventos.length ? (
+              <ol className="ms-agenda">
+                {eventos.map((e, i) => {
+                  const passou = e.fim ? new Date(e.fim).getTime() < agora : e.inicio ? new Date(e.inicio).getTime() < agora - 60 * 60_000 : false;
+                  const proximo = !passou && eventos.slice(0, i).every((x) => (x.fim ? new Date(x.fim).getTime() < agora : true));
                   return (
-                    <tr key={r.caminho} className={sujo ? "sujo" : ""} title={r.caminho}>
-                      <td className="nome">{r.nome}</td>
-                      <td>{r.ramo ?? "—"}</td>
-                      <td>{pend}</td>
-                      <td className="commit">{r.ultimoCommit ?? "sem commits"}</td>
-                      <td className="quando">{haQuantoTempo(r.ultimoCommitEm).replace("há ", "")}</td>
-                    </tr>
+                    <li key={i} className={`${passou ? "passou" : ""} ${proximo ? "proximo" : ""}`}>
+                      <time>{e.inicio ? hora(e.inicio) : "—"}</time>
+                      <div><b>{e.titulo}</b><span>{[e.inicio && !passou ? emQuanto(e.inicio) : null, e.fim ? `até ${hora(e.fim)}` : null, e.local].filter(Boolean).join(" · ")}</span></div>
+                    </li>
                   );
                 })}
-              </tbody>
-            </table>
-          ) : (
-            <p className="mesa-vazio">nenhum repositório git encontrado</p>
-          )}
-          {dev?.portas.length ? (
-            <p className="mesa-noar">
-              no ar:{" "}
-              {dev.portas.map((p) => (
-                <span key={p.porta}>
-                  <b>{p.porta}</b> {p.processo ?? ""}
-                </span>
-              ))}
-            </p>
-          ) : null}
-          {dev?.arquivos.length ? (
-            <div className="mesa-mexidos">
-              <h2 className="mesa-bloco-titulo">
-                <span>Mexidos</span>
-                <em>{haQuantoTempo(dev.medidoEm)}</em>
-              </h2>
-              {dev.arquivos.slice(0, 15).map((a) => (
-                <div key={a.caminho} title={a.caminho}>
-                  <span>{a.nome}</span>
-                  <em>{tamanho(a.tamanhoBytes)}</em>
-                  <small>{haQuantoTempo(a.modificadoEm).replace("há ", "")}</small>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </Bloco>
-      </aside>
-
-      {/* ------------------------------------------------------------ documento */}
-      <section className="mesa-coluna mesa-doc">
-        <h2 className="mesa-bloco-titulo">
-          <span>Deixado pelo Jarvis</span>
-          <em>
-            {cartoes?.length ?? 0} registros{passosAbertos ? ` · ${passosAbertos} passos abertos` : ""}
-          </em>
-          <span className="filtros">
-            {(["tudo", "fixados", "passos", "alerta"] as Filtro[]).map((f) => (
-              <button key={f} type="button" className={`acao ${filtro === f ? "ativo" : ""}`} onClick={() => setFiltro(f)}>
-                {f === "passos" ? "passos abertos" : f}
-              </button>
-            ))}
-          </span>
-        </h2>
-
-        {!cartoes?.length ? (
-          <p className="mesa-vazio grande">Nada deixado ainda. Peça: "mostra no painel".</p>
-        ) : documento.fixados.length + documento.demais.length === 0 ? (
-          <p className="mesa-vazio">
-            {filtro === "fixados" ? "nenhum fixado" : filtro === "passos" ? "nenhum com passos abertos" : "nenhum em alerta"}
-          </p>
-        ) : null}
-
-        {documento.fixados.length ? <div className="mesa-rotulo-fixado">fixado</div> : null}
-        {[...documento.fixados, ...documento.demais].map((c) => (
-          <Secao
-            key={c.id}
-            cartao={c}
-            confirmacao={confirmacao}
-            aoFixar={() => atualizarCartao.mutate({ id: c.id, fixado: !c.fixado })}
-            aoRemover={() => removerCartao.mutate({ id: c.id })}
-            aoMarcar={(i, feito) => atualizarCartao.mutate({ id: c.id, passo: { indice: i, feito } })}
-          />
-        ))}
-      </section>
-
-      {/* ------------------------------------------------------------ direita */}
-      <aside className="mesa-direita">
-        <Bloco titulo="Vai fazer" extra={String(agenda.length)}>
-          <div className="mesa-lista">
-            {agenda.map((c) => {
-              const chave = `comp-${c.id}`;
-              const glifo = c.tipo === "lembrete" ? "◦" : c.tipo === "rotina" ? "↻" : "⌁";
-              const linha2 =
-                c.tipo === "lembrete" ? `${emQuanto(c.proximaEm)}${c.proximaEm ? ` · ${diaHora(c.proximaEm)}` : ""}`
-                : c.tipo === "rotina" ? `${diasDaSemana(c.diasDaSemana)} ${minutosParaHora(c.horaDoDia)} · próxima ${emQuanto(c.proximaEm)}${c.disparos ? ` · disparou ${c.disparos}×` : ""}${c.ultimoDisparoEm ? ` · último ${haQuantoTempo(c.ultimoDisparoEm)}` : ""}`
-                : `${c.metrica} ${c.comparacao === "acima" ? "acima de" : "abaixo de"} ${c.limite}% · ${c.armado ? "armado" : "disparado, esperando normalizar"}${c.ultimoDisparoEm ? ` · último ${haQuantoTempo(c.ultimoDisparoEm)}` : ""}`;
-              return (
-                <article key={c.id}>
-                  <div className="linha1">
-                    <i>{glifo}</i>
-                    <span>{c.texto}</span>
-                    <button type="button" className={`acao ${confirmacao.armada(chave) ? "confirmar" : ""}`} onClick={() => confirmacao.pedir(chave, () => cancelarCompromisso.mutate({ id: c.id }))}>
-                      {confirmacao.armada(chave) ? "confirmar?" : "×"}
-                    </button>
-                  </div>
-                  <div className={`linha2 ${c.tipo === "vigia" && !c.armado ? "aceso" : ""}`}>{linha2}</div>
-                </article>
-              );
-            })}
-            {!agenda.length ? <p className="mesa-vazio">nada prometido</p> : null}
+              </ol>
+            ) : (
+              <p className="ms-vazio">{hoje?.agenda.ligada ? "nada na agenda hoje" : "ligue o Google para ver a agenda aqui"}</p>
+            )}
           </div>
-        </Bloco>
+          <div>
+            <h3 className="ms-sub">Pedem resposta {hoje?.email.ligado ? <em>{emailsQuePedem.length} de {hoje.email.naoLidos.length} não lidos</em> : <Pilula>gmail desligado</Pilula>}</h3>
+            {emailsQuePedem.length || outrosEmails.length ? (
+              <div className="ms-emails">
+                {[...emailsQuePedem, ...outrosEmails.slice(0, Math.max(0, 6 - emailsQuePedem.length))].map((m, i) => (
+                  <article key={i} className={m.pedeResposta ? "pede" : ""}>
+                    <div><b>{m.de || "—"}</b><small>{m.quando ? haQuantoTempo(m.quando) : ""}</small></div>
+                    <span>{m.assunto}</span>
+                    {m.previa ? <p>{m.previa}</p> : null}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="ms-vazio">{hoje?.email.ligado ? "nenhum não lido nos últimos dois dias" : "ligue o Google para ver e-mails aqui"}</p>
+            )}
+          </div>
+        </div>
+      </Secao>
 
-        <Bloco titulo="Fez" extra={fezHoje ? `hoje ${fezHoje}` : undefined} className="mesa-fez">
-          <div className="mesa-lista">
-            {grupos.slice(0, gruposVisiveis).map((g) => (
-              <div key={g[0].execucaoId} className="grupo">
-                <header>
-                  <span>{g[0].pedido || "—"}</span>
-                  <small>{haQuantoTempo(g[0].em)}</small>
-                </header>
-                {[...g].reverse().map((a) => (
-                  <div key={a.id}>
-                    <div className={`acao-linha ${!a.ok ? "falhou" : ""} ${acaoAberta === a.id ? "aberta" : ""}`} onClick={() => setAcaoAberta(acaoAberta === a.id ? null : a.id)}>
-                      <span>{horaCurta(a.em)}</span>
-                      <span>
-                        {a.ferramenta} · <span className="status">{a.bloqueada ? "recusada" : a.ok ? "ok" : "falhou"}</span>
-                      </span>
-                      <span className="resumo">{a.resumo || a.detalhe}</span>
-                    </div>
-                    {acaoAberta === a.id && a.detalhe ? <pre className="detalhe">{a.detalhe}</pre> : null}
+      {/* ------------------------------------------------------------ deixado */}
+      <Secao
+        id="deixado"
+        rotulo="02 · DEIXADO PELO JARVIS"
+        titulo={cartoes?.length ? `${cartoes.length} registro${cartoes.length === 1 ? "" : "s"}${passosAbertos ? ` · ${passosAbertos} passos abertos` : ""}` : "Nada deixado ainda"}
+        extra={cartoes?.length ? (["tudo", "fixados", "passos", "alerta"] as Filtro[]).map((f) => <button key={f} type="button" className={`acao filtro ${filtro === f ? "ativo" : ""}`} onClick={() => setFiltro(f)}>{f === "passos" ? "passos abertos" : f}</button>) : null}
+        resumo={cartoes?.length ? undefined : 'Peça por voz — "mostra no painel", "deixa isso aqui" — e o que ele apurar fica nesta seção, para sempre, até você ou ele remover.'}
+      >
+        {documento.map((c) => {
+          const passos = c.itens.filter((i) => i.tipo === "passo");
+          const feitos = passos.filter((i) => i.tipo === "passo" && i.feito).length;
+          const chave = `c-${c.id}`;
+          return (
+            <article key={c.id} className={`ms-registro tom-${c.tom} ${c.fixado ? "fixado" : ""}`}>
+              <header>
+                <div className="linha">
+                  {c.fixado ? <Pilula tom="aceso">fixado</Pilula> : null}
+                  {c.tom !== "neutro" ? <Pilula tom={c.tom}>{c.tom}</Pilula> : null}
+                  {passos.length ? <Pilula>{feitos}/{passos.length} passos</Pilula> : null}
+                  <small>{haQuantoTempo(c.criadoEm)} · #{c.id}</small>
+                  <span className="acoes">
+                    <button type="button" className="acao" onClick={() => atualizarCartao.mutate({ id: c.id, fixado: !c.fixado })}>{c.fixado ? "soltar" : "fixar"}</button>
+                    <button type="button" className={`acao ${confirmacao.armada(chave) ? "confirmar" : ""}`} onClick={() => confirmacao.pedir(chave, () => removerCartao.mutate({ id: c.id }))}>{confirmacao.armada(chave) ? "confirmar remoção?" : "remover"}</button>
+                  </span>
+                </div>
+                <h3>{c.titulo}</h3>
+                {c.subtitulo ? <p>{c.subtitulo}</p> : null}
+              </header>
+              <Itens itens={c.itens} aoMarcar={(i, feito) => atualizarCartao.mutate({ id: c.id, passo: { indice: i, feito } })} />
+              {c.nota ? <footer>{c.nota}</footer> : null}
+            </article>
+          );
+        })}
+        {cartoes?.length && !documento.length ? <p className="ms-vazio">nenhum registro com esse filtro</p> : null}
+      </Secao>
+
+      {/* ------------------------------------------------------------ projetos */}
+      <Secao id="projetos" rotulo="03 · PROJETOS" titulo={repos.sujos.length ? `${repos.sujos.length} pedem atenção` : "Tudo limpo"} resumo={dev?.portas.length ? `No ar agora: ${dev.portas.map((p) => `${p.porta}${p.processo ? ` (${p.processo})` : ""}`).join(", ")}.` : undefined}>
+        <div className="ms-repos">
+          {repos.sujos.map((r) => (
+            <article key={r.caminho} title={r.caminho}>
+              <div className="linha">
+                <b>{r.nome}</b>
+                <Pilula>{r.ramo ?? "—"}</Pilula>
+                {r.alterados ? <Pilula tom="aceso">{r.alterados} alterado{r.alterados > 1 ? "s" : ""}</Pilula> : null}
+                {r.naoRastreados ? <Pilula>{r.naoRastreados} novo{r.naoRastreados > 1 ? "s" : ""}</Pilula> : null}
+                {r.aFrente ? <Pilula>↑{r.aFrente} sem push</Pilula> : null}
+                {r.atras ? <Pilula tom="alerta">↓{r.atras} atrás</Pilula> : null}
+                <small>{haQuantoTempo(r.ultimoCommitEm)}</small>
+              </div>
+              <p>{r.ultimoCommit ?? "sem commits"}</p>
+            </article>
+          ))}
+          {!dev ? <p className="ms-vazio">procurando repositórios…</p> : null}
+        </div>
+        {repos.limpos.length ? (
+          <div className="ms-limpos">
+            <button type="button" className="acao" onClick={() => setMostrarLimpos((v) => !v)}>{mostrarLimpos ? "ocultar" : "ver"} {repos.limpos.length} limpos</button>
+            {mostrarLimpos ? <p>{repos.limpos.map((r) => r.nome).join(" · ")}</p> : null}
+          </div>
+        ) : null}
+        {dev?.arquivos.length ? (
+          <div className="ms-mexidos">
+            <h3 className="ms-sub">Mexidos <em>{haQuantoTempo(dev.medidoEm)}</em></h3>
+            <div className="ms-mexidos-grade">{dev.arquivos.slice(0, 12).map((a) => <span key={a.caminho} title={a.caminho}>{a.nome}<small>{haQuantoTempo(a.modificadoEm).replace("há ", "")}</small></span>)}</div>
+          </div>
+        ) : null}
+      </Secao>
+
+      {/* ------------------------------------------------------------ vai fazer / fez */}
+      <Secao id="ele" rotulo="04 · O JARVIS" titulo={`${agenda.length} prometido${agenda.length === 1 ? "" : "s"} · ${(acoes ?? []).length ? `${(acoes ?? []).length} ações recentes` : "nada executado ainda"}`}>
+        <div className="ms-duas">
+          <div>
+            <h3 className="ms-sub">Vai fazer</h3>
+            {agenda.length ? (
+              <div className="ms-lista">
+                {agenda.map((c) => {
+                  const chave = `k-${c.id}`;
+                  const linha2 = c.tipo === "lembrete" ? `${emQuanto(c.proximaEm)}${c.proximaEm ? ` · ${diaHora(c.proximaEm)}` : ""}` : c.tipo === "rotina" ? `${diasDaSemana(c.diasDaSemana)} ${minutosParaHora(c.horaDoDia)} · próxima ${emQuanto(c.proximaEm)}${c.disparos ? ` · disparou ${c.disparos}×` : ""}` : `${c.metrica} ${c.comparacao === "acima" ? "acima de" : "abaixo de"} ${c.limite}% · ${c.armado ? "armado" : "disparado"}`;
+                  return (
+                    <article key={c.id}>
+                      <div className="linha"><Pilula>{c.tipo}</Pilula><b>{c.texto}</b><button type="button" className={`acao ${confirmacao.armada(chave) ? "confirmar" : ""}`} onClick={() => confirmacao.pedir(chave, () => cancelarCompromisso.mutate({ id: c.id }))}>{confirmacao.armada(chave) ? "cancelar?" : "×"}</button></div>
+                      <small className={c.tipo === "vigia" && !c.armado ? "aceso" : ""}>{linha2}</small>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : <p className="ms-vazio">nada prometido — peça "me lembra…" ou "avisa quando…"</p>}
+          </div>
+          <div>
+            <h3 className="ms-sub">Fez</h3>
+            {grupos.length ? (
+              <div className="ms-fez">
+                {grupos.map((g) => (
+                  <div key={g[0].execucaoId} className="grupo">
+                    <header><span>{g[0].pedido || "—"}</span><small>{haQuantoTempo(g[0].em)}</small></header>
+                    {[...g].reverse().map((a) => (
+                      <div key={a.id}>
+                        <div className={`linha ${!a.ok ? "falhou" : ""}`} onClick={() => setAcaoAberta(acaoAberta === a.id ? null : a.id)}>
+                          <time>{hora(a.em)}</time>
+                          <Pilula tom={a.bloqueada ? "" : a.ok ? "ok" : "alerta"}>{a.bloqueada ? "recusada" : a.ok ? "ok" : "falhou"}</Pilula>
+                          <b>{a.ferramenta}</b>
+                          <span>{a.resumo || a.detalhe}</span>
+                        </div>
+                        {acaoAberta === a.id && a.detalhe ? <pre>{a.detalhe}</pre> : null}
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
-            ))}
-            {!grupos.length ? <p className="mesa-vazio">nada executado ainda</p> : null}
-            {grupos.length > gruposVisiveis ? (
-              <button type="button" className="acao mesa-mais" onClick={() => setGruposVisiveis((n) => n + GRUPOS_DE_FEZ)}>
-                mais {grupos.length - gruposVisiveis}
-              </button>
-            ) : null}
+            ) : <p className="ms-vazio">a trilha do que ele executa aparece aqui</p>}
           </div>
-        </Bloco>
+        </div>
+      </Secao>
 
-        <Bloco
-          titulo="Aprendeu"
-          extra={
-            apagadas ? (
-              <button type="button" className="acao" onClick={() => setMostrarApagadas((a) => !a)}>
-                {mostrarApagadas ? "ocultar apagadas" : `${apagadas} apagadas`}
-              </button>
-            ) : (
-              String(memoriasVisiveis.length)
-            )
-          }
-        >
-          <div className="mesa-lista">
-            {memoriasVisiveis.map((m) => {
-              const chave = `mem-${m.id}`;
-              return (
-                <article key={m.id} className={`${m.fixada ? "fixada" : ""} ${m.esquecida ? "apagada" : ""}`}>
-                  <div className="linha1">
-                    <span>{m.conteudo}</span>
-                    {m.esquecida ? (
-                      <button type="button" className="acao" onClick={() => restaurar.mutate({ id: m.id })}>↶</button>
-                    ) : (
-                      <button type="button" className={`acao ${confirmacao.armada(chave) ? "confirmar" : ""}`} onClick={() => confirmacao.pedir(chave, () => esquecer.mutate({ id: m.id }))}>
-                        {confirmacao.armada(chave) ? "esquecer?" : "×"}
-                      </button>
-                    )}
-                  </div>
-                  <div className="linha2">
-                    {m.tipo}
-                    {m.origem === "inferida" ? " · deduzida" : ""}
-                    {m.versao > 1 ? (
-                      <>
-                        {" · "}
-                        <span className="vN" onClick={() => setVersoesDe(versoesDe === m.id ? null : m.id)}>v{m.versao}</span>
-                      </>
-                    ) : null}
-                    {m.usos > 0 ? ` · usada ${m.usos}×` : ""} · {haQuantoTempo(m.atualizadaEm)}
-                  </div>
-                  {versoesDe === m.id && versoes ? (
-                    <div className="mesa-versoes">
-                      {versoes.map((v) => (
-                        <div key={v.versao}>
-                          v{v.versao} · {haQuantoTempo(v.criadoEm)}{v.motivo ? ` · ${v.motivo}` : ""} · <q>{v.conteudo}</q>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-            {!memoriasVisiveis.length ? <p className="mesa-vazio">nada aprendido ainda</p> : null}
-          </div>
-        </Bloco>
-      </aside>
+      {/* ------------------------------------------------------------ aprendeu */}
+      <Secao id="aprendeu" rotulo="05 · APRENDEU" titulo={`${memoriasVisiveis.filter((m) => !m.esquecida).length} memória${memoriasVisiveis.length === 1 ? "" : "s"}`} extra={apagadas ? <button type="button" className="acao" onClick={() => setMostrarApagadas((v) => !v)}>{mostrarApagadas ? "ocultar apagadas" : `ver ${apagadas} apagadas`}</button> : null}>
+        <div className="ms-memorias">
+          {memoriasVisiveis.map((m) => {
+            const chave = `m-${m.id}`;
+            return (
+              <article key={m.id} className={`${m.fixada ? "fixada" : ""} ${m.esquecida ? "apagada" : ""}`}>
+                <p>{m.conteudo}</p>
+                <div className="linha">
+                  <Pilula tom={m.tipo === "correcao" ? "aceso" : ""}>{m.tipo}</Pilula>
+                  {m.origem === "inferida" ? <Pilula>deduzida</Pilula> : null}
+                  {m.fixada ? <Pilula tom="aceso">fixada</Pilula> : null}
+                  <small>{m.usos > 0 ? `usada ${m.usos}× · ` : ""}{haQuantoTempo(m.atualizadaEm)}</small>
+                  {m.esquecida ? <button type="button" className="acao" onClick={() => restaurar.mutate({ id: m.id })}>restaurar</button> : <button type="button" className={`acao ${confirmacao.armada(chave) ? "confirmar" : ""}`} onClick={() => confirmacao.pedir(chave, () => esquecer.mutate({ id: m.id }))}>{confirmacao.armada(chave) ? "esquecer?" : "esquecer"}</button>}
+                </div>
+              </article>
+            );
+          })}
+          {!memoriasVisiveis.length ? <p className="ms-vazio">ele ainda não guardou nada</p> : null}
+        </div>
+      </Secao>
     </main>
   );
 }
