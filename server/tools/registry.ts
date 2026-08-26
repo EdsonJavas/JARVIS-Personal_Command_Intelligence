@@ -3,7 +3,7 @@ import type { EventoBrutoJarvis, NivelDeRisco } from "@shared/jarvisStream";
 import { collectSystemStats, describeSystemForModel } from "../systemStats";
 import { collectWorld, describeWorldForModel } from "../world";
 import { collectDevLife, describeDevLifeForModel } from "../devLife";
-import { adicionarCartao, limparCartoes, type TomDoCartao } from "../board";
+import { adicionarCartao, atualizarCartao, limparCartoes, removerCartao, type TomDoCartao } from "../board";
 import { resumirSaida, saidaIndicaFalha } from "../jarvis/recapitulacao";
 import { recordAudit, runPowerShell, TEXTO_INTERROMPIDO } from "./shell";
 import {
@@ -426,29 +426,50 @@ const verProjetos: ToolDefinition = {
 const mostrarNoPainel: ToolDefinition = {
   name: "mostrar_no_painel",
   description:
-    "Coloca um cartão na janela do painel, para o Senhor Edson ver. Use para listas, comparações, resultados de busca e qualquer coisa longa demais para falar. Depois de usar, mencione em uma frase que está na tela.",
+    "Deixa um cartão na janela do painel — a área de trabalho do dono. USO OBRIGATÓRIO para: resultado de pesquisa, lista com 3+ itens, comparação, números medidos, plano ou passo a passo, tabela, código ou comando, link. A voz resume; o painel guarda o detalhe. Escolha o TIPO certo de cada item: metrica para número com rótulo, progresso para percentual, passo para tarefa marcável, tabela para comparação, lista para enumeração, link para endereço, codigo para comando ou trecho, texto para prosa curta. Depois, diga em uma frase que está na tela.",
   parameters: {
     type: "object",
     properties: {
       titulo: str("Título curto do cartão"),
+      subtitulo: str("Uma linha de contexto sob o título, opcional"),
       itens: {
         type: "array",
-        description: "Linhas do cartão",
+        description: "Itens do cartão, cada um com um tipo",
         items: {
           type: "object",
           properties: {
-            rotulo: str("Rótulo opcional da linha"),
-            texto: str("Conteúdo da linha"),
+            tipo: {
+              type: "string",
+              enum: ["texto", "metrica", "progresso", "link", "lista", "passo", "tabela", "codigo", "separador"],
+            },
+            rotulo: str("Rótulo curto (texto, metrica, progresso, link, lista, separador)"),
+            texto: str("Conteúdo (texto, progresso, link, passo, codigo)"),
+            valor: str("metrica: o valor já formatado, ex. '220'. progresso: número de 0 a 100"),
+            unidade: str("metrica: unidade, ex. 'GB', '%', 'ms'"),
+            tendencia: { type: "string", enum: ["sobe", "desce", "estavel"], description: "metrica" },
+            tom: { type: "string", enum: ["neutro", "bom", "atencao", "alerta"], description: "metrica" },
+            url: str("link: endereço completo com https://"),
+            itens: { type: "array", items: { type: "string" }, description: "lista: as linhas" },
+            feito: { type: "boolean", description: "passo: já concluído?" },
+            colunas: { type: "array", items: { type: "string" }, description: "tabela: cabeçalhos" },
+            linhas: {
+              type: "array",
+              items: { type: "array", items: { type: "string" } },
+              description: "tabela: linhas, cada uma com uma célula por coluna",
+            },
+            linguagem: str("codigo: ex. 'powershell', 'ts'"),
           },
-          required: ["texto"],
+          required: ["tipo"],
         },
       },
       tom: {
         type: "string",
         enum: ["neutro", "bom", "atencao", "alerta"],
-        description: "Cor do cartão conforme a natureza do conteúdo",
+        description: "Cor da borda conforme a natureza do conteúdo",
       },
       nota: str("Observação de rodapé, opcional"),
+      largura: { type: "string", enum: ["normal", "largo"], description: "largo ocupa duas colunas" },
+      fixado: { type: "boolean", description: "Fixado não cai quando novos entram. Use para o que ele vai consultar por dias." },
     },
     required: ["titulo", "itens"],
   },
@@ -457,22 +478,68 @@ const mostrarNoPainel: ToolDefinition = {
   narrar: () => "Vou deixar isso no painel.",
   execute: async (args) => {
     const itens = Array.isArray(args.itens) ? args.itens : [];
-    if (itens.length === 0) return { texto: "Um cartão precisa de ao menos uma linha.", ok: false };
-
     const cartao = adicionarCartao({
-      titulo: String(args.titulo),
-      itens: itens.map((item: any) => ({
-        rotulo: item?.rotulo ? String(item.rotulo) : undefined,
-        texto: String(item?.texto ?? ""),
-      })),
+      titulo: String(args.titulo ?? ""),
+      subtitulo: args.subtitulo ? String(args.subtitulo) : null,
+      itens,
       tom: (args.tom as TomDoCartao) ?? "neutro",
       nota: args.nota ? String(args.nota) : null,
+      largura: args.largura === "largo" ? "largo" : "normal",
+      fixado: Boolean(args.fixado),
     });
-
+    if (!cartao) {
+      return { texto: "Nenhum item tinha forma válida. Cada item precisa de tipo e do conteúdo daquele tipo.", ok: false };
+    }
     return {
-      texto: `Cartão "${cartao.titulo}" publicado no painel com ${cartao.itens.length} linha(s).`,
+      texto: `Cartão #${cartao.id} "${cartao.titulo}" no painel, com ${cartao.itens.length} item(ns).`,
       ok: true,
     };
+  },
+};
+
+const atualizarPainel: ToolDefinition = {
+  name: "atualizar_painel",
+  description:
+    "Mexe num cartão que já está no painel: marca um passo como feito, fixa ou solta, troca a nota, ou remove o cartão. O número do cartão está no resumo do painel que você recebe.",
+  parameters: {
+    type: "object",
+    properties: {
+      id: { type: "integer", description: "Número do cartão" },
+      passo: {
+        type: "object",
+        properties: {
+          indice: { type: "integer", description: "Posição do item, começando em 0" },
+          feito: { type: "boolean" },
+        },
+        required: ["indice", "feito"],
+      },
+      fixado: { type: "boolean" },
+      nota: str("Nova nota de rodapé"),
+      remover: { type: "boolean", description: "Verdadeiro para tirar o cartão do painel" },
+    },
+    required: ["id"],
+  },
+  efeito: "escrita",
+  describe: (args) => `painel #${args.id}: ${args.remover ? "remover" : "atualizar"}`,
+  narrar: () => "Vou ajustar o painel.",
+  execute: async (args) => {
+    const id = Number(args.id);
+    if (args.remover) {
+      return removerCartao(id)
+        ? { texto: `Cartão #${id} removido.`, ok: true }
+        : { texto: `Não há cartão #${id}.`, ok: false };
+    }
+    const passo = args.passo as { indice?: unknown; feito?: unknown } | undefined;
+    const cartao = atualizarCartao(id, {
+      ...(typeof args.fixado === "boolean" ? { fixado: args.fixado } : {}),
+      ...(args.nota !== undefined ? { nota: String(args.nota) } : {}),
+      ...(passo && typeof passo.indice === "number"
+        ? { passo: { indice: passo.indice, feito: Boolean(passo.feito) } }
+        : {}),
+    });
+    return cartao
+      ? { texto: `Cartão #${id} atualizado.`, ok: true }
+      : { texto: `Não há cartão #${id}.`, ok: false };
   },
 };
 
@@ -676,6 +743,7 @@ export const TOOLS: ToolDefinition[] = [
   verMundo,
   verProjetos,
   mostrarNoPainel,
+  atualizarPainel,
   limparPainel,
   buscarNaWeb,
   perguntarAoUsuario,
@@ -734,6 +802,8 @@ export const ISENTAS_DE_RISCO = new Set([
   "ver_projetos",
   "mostrar_no_painel",
   "limpar_painel",
+  // Mexe só no painel: marcar passo, fixar, remover cartão. Nada na máquina.
+  "atualizar_painel",
   "buscar_na_web",
   "perguntar_ao_usuario",
   // Memória não toca a máquina; o filtro de segredos é a guarda dela.

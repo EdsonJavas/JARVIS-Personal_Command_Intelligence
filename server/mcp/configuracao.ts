@@ -20,8 +20,43 @@ function temGoogle(): boolean {
   );
 }
 
+function temGitHub(): boolean {
+  return Boolean(process.env.GITHUB_TOKEN?.trim());
+}
+
 export function servidoresConfigurados(): ServidorMcp[] {
   const lista: ServidorMcp[] = [];
+
+  if (temGitHub()) {
+    lista.push({
+      nome: "github",
+      /*
+       * O servidor oficial de referência do protocolo. Tudo o que o token do
+       * dono alcança, o Jarvis alcança: repositórios, issues, pull requests,
+       * conteúdo de arquivo, busca de código.
+       */
+      comando: "npx",
+      argumentos: ["-y", "@modelcontextprotocol/server-github"],
+      ambiente: { GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN ?? "" },
+      /*
+       * Ler é o uso normal e passa direto. Escrever num repositório — subir
+       * arquivo, abrir ou mesclar pull request, criar repositório ou fork —
+       * fica visível para outras pessoas e não tem volta simples: confirma.
+       * Issue e comentário são conversa, não código: passam.
+       */
+      arriscadas: [
+        "create_or_update_file",
+        "push_files",
+        "create_repository",
+        "fork_repository",
+        "create_branch",
+        "create_pull_request",
+        "merge_pull_request",
+        "create_pull_request_review",
+      ],
+      seguras: ["create_issue", "add_issue_comment", "update_issue"],
+    });
+  }
 
   if (temGoogle()) {
     lista.push({
@@ -72,9 +107,18 @@ export function servidoresConfigurados(): ServidorMcp[] {
 
 /** Explica ao dono por que não há ferramentas do Google, quando não há. */
 export function motivoDeAusencia(): string | null {
-  if (temGoogle()) return null;
-  return (
-    "Agenda e e-mail não estão ligados: falta GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env. " +
-    "Rode `npm run google:configurar` para o passo a passo."
-  );
+  const faltas: string[] = [];
+  if (!temGoogle()) {
+    faltas.push(
+      "Agenda e e-mail não estão ligados: falta GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env. " +
+        "Rode `npm run google:configurar` para o passo a passo."
+    );
+  }
+  if (!temGitHub()) {
+    faltas.push(
+      "GitHub não está ligado: falta GITHUB_TOKEN no .env. " +
+        "Crie um token em https://github.com/settings/tokens com os escopos repo, read:org e read:user."
+    );
+  }
+  return faltas.length ? faltas.join(" ") : null;
 }

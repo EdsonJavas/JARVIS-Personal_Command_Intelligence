@@ -29,6 +29,11 @@ export const GRUPOS: GrupoExterno[] = [
       /\b(agenda|calendario|calendar|evento|eventos|reuniao|reunioes|compromisso|compromissos|marcar|marque|marcado|agendar|agende|remarcar|horario|disponibilidade|disponivel|ocupado|livre|semana|compromet)/,
   },
   {
+    prefixo: "github_",
+    gatilhos:
+      /\b(github|repositorio|repositorios|repo|repos|pull request|pull requests|pr|prs|issue|issues|commit|commits|branch|branches|ramo|merge|mesclar|fork|clone|readme|codigo no github|meu codigo|meus projetos)\b/,
+  },
+  {
     prefixo: "email_",
     gatilhos:
       /\b(email|e-mail|emails|mensagem|mensagens|caixa de entrada|inbox|gmail|remetente|destinatario|responder|responda|encaminhar|enviar|envie|rascunho|spam|anexo|assinatura|nao lidos|nao lidas)/,

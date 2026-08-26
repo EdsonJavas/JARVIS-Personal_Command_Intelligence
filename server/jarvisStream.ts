@@ -19,6 +19,8 @@ import {
   sinalDe,
 } from "./execucoes";
 import { registrar as registrarConversa } from "./conversa/repositorio";
+import { refletir } from "./aprendizado/reflexao";
+import { lembrar } from "./memoria/repositorio";
 import { generateJarvisReply, JarvisProviderError } from "./jarvisAi";
 import { concluirTurno, prepararTurno } from "./jarvis/turno";
 
@@ -227,6 +229,15 @@ async function executar(execucaoId: string, mensagens: MensagemDeFio[]): Promise
 
     // O turno inteiro vai para o disco: a conversa não morre com a aba. Só a
     // última mensagem do dono — as anteriores já estão lá de turnos passados.
+    // O que este turno ensinou vai para a memória sem ninguém pedir. Uma
+    // correção do dono ou um caminho que resolveu depois de outro falhar valem
+    // para as próximas conversas; morreriam com esta.
+    for (const licao of refletir(mensagens, resposta.actions)) {
+      void lembrar({ conteudo: licao.conteudo, tipo: licao.tipo, origem: "inferida" }).catch(
+        (erro) => console.warn("[Aprendizado] não gravou:", String(erro).slice(0, 120))
+      );
+    }
+
     const doDono = [...mensagens].reverse().find((m) => m.role === "user");
     void registrarConversa([
       ...(doDono ? [{ role: "user" as const, content: doDono.content }] : []),

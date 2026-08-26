@@ -12,7 +12,7 @@ import { collectSystemStats } from "./systemStats";
 import { concluirTurno, prepararTurno } from "./jarvis/turno";
 import { collectWorld } from "./world";
 import { collectDevLife } from "./devLife";
-import { listarCartoes, removerCartao } from "./board";
+import { atualizarCartao, listarCartoes, removerCartao } from "./board";
 import { esquecer, listarMemorias, restaurar } from "./memoria/repositorio";
 import { limpar as limparConversa, recentes as conversaRecente } from "./conversa/repositorio";
 import { listarCompromissos } from "./tempo/compromissos";
@@ -111,6 +111,15 @@ export const appRouter = router({
     removeCard: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ input }) => ({ removido: removerCartao(input.id) })),
+    updateCard: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          fixado: z.boolean().optional(),
+          passo: z.object({ indice: z.number().int().min(0), feito: z.boolean() }).optional(),
+        })
+      )
+      .mutation(({ input }) => ({ cartao: atualizarCartao(input.id, input) })),
   }),
 
   /**
