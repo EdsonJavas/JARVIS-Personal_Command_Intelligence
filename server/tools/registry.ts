@@ -1,3 +1,4 @@
+import { pareceComando } from "@shared/fala";
 import type { EventoBrutoJarvis, NivelDeRisco } from "@shared/jarvisStream";
 import { collectSystemStats, describeSystemForModel } from "../systemStats";
 import { collectWorld, describeWorldForModel } from "../world";
@@ -651,7 +652,9 @@ const executarPowerShell: ToolDefinition = {
   },
   efeito: "escrita",
   describe: (args) => String(args.comando).replace(/\s+/g, " ").slice(0, 140),
-  narrar: (args) => (args.motivo ? String(args.motivo) : "Vou rodar um comando."),
+  // O motivo é falado; se o modelo pôs o comando nele, sai a frase neutra.
+  narrar: (args) =>
+    args.motivo && !pareceComando(String(args.motivo)) ? String(args.motivo) : "Vou rodar um comando.",
   risco: (args) => classificarComandoPowerShell(String(args.comando ?? "")),
   execute: async (args, ctx) => shell(ctx, String(args.comando)),
 };

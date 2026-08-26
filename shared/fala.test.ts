@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepararFala, LIMITE_FALA } from "./fala";
+import { pareceComando, prepararFala, LIMITE_FALA } from "./fala";
 
 describe("preparar fala", () => {
   it("remove marcação, emoji e endereço, preservando o nome do arquivo", () => {
@@ -50,5 +50,28 @@ describe("preparar fala", () => {
   it("texto vazio devolve vazio", () => {
     expect(prepararFala("")).toBe("");
     expect(prepararFala("   ")).toBe("");
+  });
+});
+
+describe("comando não se soletra", () => {
+  it("reconhece comando por cmdlet, flag, pipe, variável ou npm/git", () => {
+    expect(pareceComando("Get-Process -Name chrome")).toBe(true);
+    expect(pareceComando("npm run dev")).toBe(true);
+    expect(pareceComando("dir | findstr log")).toBe(true);
+    expect(pareceComando("$env:PATH")).toBe(true);
+    // E NÃO confunde nome de arquivo nem palavra comum com comando.
+    expect(pareceComando("contrato.pdf")).toBe(false);
+    expect(pareceComando("Cursor")).toBe(false);
+    expect(pareceComando("segunda-feira")).toBe(false);
+  });
+
+  it("trecho entre crases que é comando vira 'o comando'; nome de arquivo continua", () => {
+    const fala = prepararFala("Rodei `Get-ChildItem -Recurse | Measure-Object` e achei o `contrato.pdf`.");
+    expect(fala).toBe("Rodei o comando e achei o contrato.pdf.");
+  });
+
+  it("comando solto no texto, sem crase, também some", () => {
+    const fala = prepararFala("Usei Stop-Process -Name chrome -Force para encerrar. Ficou leve, senhor.");
+    expect(fala).toBe("Usei o comando para encerrar. Ficou leve, senhor.");
   });
 });

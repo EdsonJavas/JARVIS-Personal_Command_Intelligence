@@ -16,6 +16,28 @@ function encurtarCaminhos(texto: string): string {
   });
 }
 
+/**
+ * Isto é um comando, não uma palavra?
+ *
+ * O dono ouviu "Get hífen ChildItem barra vertical Where hífen Object" e
+ * disse o óbvio: isso não existe. Comando se DESCREVE em voz alta — "vou
+ * listar os arquivos" — nunca se soletra. Um cmdlet, uma flag, um pipe, um
+ * cifrão de variável, um `npm` ou `git` no começo: qualquer um denuncia.
+ */
+export function pareceComando(trecho: string): boolean {
+  const t = trecho.trim();
+  if (!t) return false;
+  return (
+    /\b[A-Z][a-z]+-[A-Z][A-Za-z]+\b/.test(t) || // Get-Process, Stop-Service
+    /(^|\s)-{1,2}[A-Za-z]/.test(t) || // -Recurse, --force
+    /[|$;{}]|&&|>>|\.\\|\$\(/.test(t) ||
+    /^(npm|npx|git|cd|dir|del|copy|move|ren)\b/i.test(t)
+  );
+}
+
+/** Um cmdlet com seus argumentos, até o fim da frase ou da linha. */
+const CMDLET_COM_ARGUMENTOS = /\b[A-Z][a-z]+-[A-Z][A-Za-z]+\b[^.!?\n]*?(?=[.!?](\s|$)|\n|$)/g;
+
 export function prepararFala(texto: string, limite = LIMITE_FALA): string {
   let saida = (texto ?? "").trim();
   if (!saida) return "";
@@ -23,7 +45,10 @@ export function prepararFala(texto: string, limite = LIMITE_FALA): string {
   saida = saida
     // Blocos de código não se leem em voz alta.
     .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]+)`/g, "$1")
+    // Trecho entre crases: um nome de arquivo se lê; um comando, não.
+    .replace(/`([^`]+)`/g, (_, dentro: string) => (pareceComando(dentro) ? "o comando" : dentro))
+    // Comando solto no texto, sem crase nenhuma — o modelo também faz isso.
+    .replace(CMDLET_COM_ARGUMENTOS, "o comando")
     // Ênfase e títulos do markdown.
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
