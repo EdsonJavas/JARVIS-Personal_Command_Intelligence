@@ -72,7 +72,7 @@ export function avaliarTentativa(
     return {
       permitir: false,
       aviso:
-        "O Senhor Edson já recusou exatamente esta ação neste turno. Não peça de novo: siga com o resto do pedido ou relate o que ficou de fora.",
+        "O senhor já recusou exatamente esta ação neste turno. Não peça de novo: siga com o resto do pedido ou relate o que ficou de fora.",
     };
   }
 

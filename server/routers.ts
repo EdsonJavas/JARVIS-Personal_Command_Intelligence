@@ -14,6 +14,7 @@ import { collectWorld } from "./world";
 import { collectDevLife } from "./devLife";
 import { listarCartoes, removerCartao } from "./board";
 import { esquecer, listarMemorias, restaurar } from "./memoria/repositorio";
+import { limpar as limparConversa, recentes as conversaRecente } from "./conversa/repositorio";
 import { listarCompromissos } from "./tempo/compromissos";
 import { responderPergunta } from "./interacao/perguntas";
 import { cancelar, execucaoAtivaDe } from "./execucoes";
@@ -163,6 +164,14 @@ export const appRouter = router({
   }),
 
   jarvis: router({
+    /** A conversa de onde parou, para a tela não abrir vazia. */
+    conversa: protectedProcedure.query(async () => conversaRecente()),
+    /** Esquecer a conversa é o botão de limpar — decisão do dono, não da aba. */
+    limparConversa: protectedProcedure.mutation(async () => {
+      await limparConversa();
+      return { ok: true };
+    }),
+
     chat: protectedProcedure
       .input(z.object({ messages: z.array(jarvisMessageSchema).min(1).max(12) }))
       .mutation(async ({ input, ctx }) => {

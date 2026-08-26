@@ -27,7 +27,7 @@ const MAX_SPEECH_CHARS = 1200;
  * intenção.
  */
 const STYLE_DIRECTION =
-  "Você é o assistente pessoal de confiança do Senhor Edson: sereno, atento e " +
+  "Você é o assistente pessoal de confiança do seu senhor: sereno, atento e " +
   "discreto. Diga a frase abaixo em português do Brasil como quem fala ao lado " +
   "dele, em tom baixo e natural — entonação viva porém contida, leve calor na " +
   "voz, pausas curtas onde a pontuação pede. Nada de ênfase artificial, nada de " +

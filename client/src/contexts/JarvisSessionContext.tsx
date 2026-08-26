@@ -144,8 +144,27 @@ function descreverErro(
 }
 
 export function JarvisSessionProvider({ children }: { children: ReactNode }) {
-  // A conversa vive só enquanto a aba está aberta.
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  /*
+   * A conversa volta de onde parou.
+   *
+   * Fechar a aba não é encerrar sessão: o servidor guarda cada turno, e na
+   * volta a tela — e o contexto do modelo — recomeçam do último ponto. Só
+   * preenche se ainda não há nada na tela, para não sobrescrever uma conversa
+   * que já começou enquanto a consulta demorava.
+   */
+  const conversaGuardada = trpc.jarvis.conversa.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  });
+  const limparConversaMutation = trpc.jarvis.limparConversa.useMutation();
+  const limparConversaAsync = limparConversaMutation.mutateAsync;
+  useEffect(() => {
+    const guardada = conversaGuardada.data;
+    if (!guardada || guardada.length === 0) return;
+    setMessages((atual) => (atual.length === 0 ? (guardada as ChatMessage[]) : atual));
+  }, [conversaGuardada.data]);
   const [error, setError] = useState<ConsoleError | null>(null);
   const [latencias, setLatencias] = useState<number[]>([]);
   const [model, setModel] = useState<string | null>(null);
@@ -517,7 +536,9 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
     vozRef.current.stopSpeaking();
     setMessages([]);
     setError(null);
-  }, []);
+    // Limpar é esquecer de verdade: senão a conversa voltava na próxima abertura.
+    void limparConversaAsync().catch(() => {});
+  }, [limparConversaAsync]);
 
   // Fechar a aba no meio de uma execução deixaria o laço rodando até a carência
   // de órfã expirar. O sendBeacon é o único envio que sobrevive ao unload.

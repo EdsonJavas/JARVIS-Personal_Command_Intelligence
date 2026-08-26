@@ -130,3 +130,21 @@ export const compromissos = sqliteTable("compromissos", {
 });
 
 export type Compromisso = typeof compromissos.$inferSelect;
+
+/**
+ * O que foi dito, na ordem. Sobrevive à aba: fechar a janela não pode fazer o
+ * Jarvis esquecer o que acabou de fazer. Diferente de `memorias`, que guarda
+ * o que ele aprendeu — isto guarda a conversa em si.
+ */
+export const conversa = sqliteTable("conversa", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  role: text("role", { enum: ["user", "assistant"] }).notNull(),
+  content: text("content").notNull(),
+  /** JSON das ações executadas no turno, quando houve. */
+  acoes: text("acoes"),
+  criadaEm: integer("criadaEm", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export type LinhaDeConversa = typeof conversa.$inferSelect;

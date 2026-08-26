@@ -99,6 +99,18 @@ const MIGRACOES: Migracao[] = [
       `CREATE INDEX IF NOT EXISTS idx_compromissos_proxima ON compromissos(ativo, proximaEm)`,
     ],
   },
+  {
+    nome: "004_conversa",
+    sql: [
+      `CREATE TABLE IF NOT EXISTS conversa (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        acoes TEXT,
+        criadaEm INTEGER NOT NULL DEFAULT (unixepoch())
+      )`,
+    ],
+  },
 ];
 
 const CREATE_MIGRACOES_TABLE = `
