@@ -156,7 +156,10 @@ function Abrir-Jarvis {
     $navegador = $candidatos | Where-Object { Test-Path $_ } | Select-Object -First 1
 
     if ($navegador) {
-        Start-Process $navegador -ArgumentList "--app=$Url", "--window-size=1280,860"
+        # Sem tamanho fixo: o Chrome restaura o estado maximizado da janela de app
+        # por cima do --window-size, e a pagina ficava com o layout de 1280 ate
+        # algo forcar recalculo — o conteudo aparecia cortado a direita.
+        Start-Process $navegador -ArgumentList "--app=$Url", "--start-maximized"
     } else {
         Start-Process $Url
     }
@@ -165,7 +168,14 @@ function Abrir-Jarvis {
 # --------------------------------------------------------------------- bandeja
 
 $icone = New-Object System.Windows.Forms.NotifyIcon
-$icone.Icon = [System.Drawing.SystemIcons]::Application
+# A marca do JARVIS, em .ico com nove tamanhos: a bandeja pega o de 16 ou 20
+# ja desenhado para aquele tamanho, em vez de encolher um grande e borrar.
+$arquivoIcone = Join-Path $raiz "client\public\jarvis.ico"
+$icone.Icon = if (Test-Path $arquivoIcone) {
+    New-Object System.Drawing.Icon($arquivoIcone, 16, 16)
+} else {
+    [System.Drawing.SystemIcons]::Application
+}
 $icone.Text = "JARVIS — Ctrl+Alt+$Tecla"
 $icone.Visible = $true
 

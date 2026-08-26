@@ -4,7 +4,7 @@
 // alto como legenda, a onda vive pequena num canto e a execução sussurra no
 // rodapé. Tudo sobre o mesmo fundo, sem molduras. A conversa fica FECHADA por
 // padrão e só aparece quando chamada — é ela que roubava o espaço do principal.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AudioLines,
   Ear,
@@ -42,8 +42,33 @@ function Ponte({ onLogout }: { onLogout: () => void }) {
    */
   const mostrarConversa = conversaAberta || Boolean(pergunta);
 
+  /*
+   * Recalculo forçado na abertura e a cada redimensionamento.
+   *
+   * A janela em modo app nasce num tamanho e é maximizada logo depois, e o
+   * Chromium chegava a pintar a tela com o layout ANTIGO: conteúdo cortado à
+   * direita até o dono abrir e fechar a conversa — o que só muda um transform.
+   * Isto reproduz aquele empurrão sem depender do dono: um quadro com a classe,
+   * um sem. Não corrige CSS nenhum; corrige o navegador não ter recalculado.
+   */
+  const ponteRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const empurrar = () => {
+      const el = ponteRef.current;
+      if (!el) return;
+      el.classList.add("recalculando");
+      requestAnimationFrame(() => el.classList.remove("recalculando"));
+    };
+    const noProximoQuadro = requestAnimationFrame(empurrar);
+    window.addEventListener("resize", empurrar);
+    return () => {
+      cancelAnimationFrame(noProximoQuadro);
+      window.removeEventListener("resize", empurrar);
+    };
+  }, []);
+
   return (
-    <main className={`ponte ${mostrarConversa ? "com-conversa" : ""}`}>
+    <main ref={ponteRef} className={`ponte ${mostrarConversa ? "com-conversa" : ""}`}>
       <div className="ponte-grao" aria-hidden="true" />
       <div className="ponte-brilho" aria-hidden="true" />
 

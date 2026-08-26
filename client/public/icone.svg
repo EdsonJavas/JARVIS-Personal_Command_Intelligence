@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    A marca para ICONE: barra de tarefas, bandeja, aba.
+
+    Ícone vive entre 16 e 32 px, e ali só sobrevive o que é grosso e
+    contrastado. Fica o essencial: um disco escuro, um anel claro aberto em
+    cima e o núcleo aceso. Nada mais fino que 5 unidades em 64; o núcleo
+    ocupa um terço do diâmetro para continuar sendo um PONTO DE LUZ e não um
+    borrão. Sem gradiente: em 16 px gradiente vira lama.
+
+    Disco redondo, não quadrado arredondado: na bandeja, ao lado de ícones
+    redondos do sistema, o quadrado parecia um azulejo colado.
+  -->
+  <circle cx="32" cy="32" r="31" fill="#07111c"/>
+  <circle cx="32" cy="32" r="31" fill="none" stroke="#1d4f78" stroke-width="1"/>
+
+  <!-- anel aberto em cima: escuta -->
+  <path d="M 23.5 9.2 A 24.5 24.5 0 1 0 40.5 9.2"
+        fill="none" stroke="#8fd3ff" stroke-width="5.5" stroke-linecap="round"/>
+
+  <!-- núcleo: aceso, com um aro fino de separação do anel -->
+  <circle cx="32" cy="32" r="12.5" fill="#07111c"/>
+  <circle cx="32" cy="32" r="10.5" fill="#dff4ff"/>
+  <circle cx="32" cy="32" r="6" fill="#8fd3ff"/>
+</svg>

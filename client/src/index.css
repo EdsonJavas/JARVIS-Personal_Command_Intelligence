@@ -223,6 +223,9 @@ input:focus-visible {
   transform: translate(-50%, -50%);
   transition: transform 420ms var(--ease-out);
 }
+/* Um quadro assim, um quadro sem: força o navegador a recalcular o layout. */
+.ponte.recalculando .palco { transform: translate(-50%, -50%) translateZ(0); }
+
 /* Cede espaço quando a conversa abre, em vez de ficar atrás dela. */
 .ponte.com-conversa .palco { transform: translate(-50%, -50%) translateX(-12vw) scale(0.88); }
 
