@@ -62,7 +62,10 @@ export function JarvisConsole() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    composerRef.current?.focus();
+    // `preventScroll` e obrigatorio: este textarea vive dentro da gaveta, que
+    // fechada fica FORA da tela. Focar sem isso rolava o container inteiro
+    // para revela-lo, e a tela abria com tudo empurrado para a esquerda.
+    composerRef.current?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => {

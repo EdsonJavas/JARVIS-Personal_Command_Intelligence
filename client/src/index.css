@@ -175,7 +175,14 @@ input:focus-visible {
   display: block;
   width: 100%;
   height: 100dvh;
+  /*
+   * `clip`, e nao `hidden`: hidden ainda pode ser rolado por script — e um
+   * focus() num elemento fora da tela faz exatamente isso. Foi assim que a
+   * gaveta fechada, empurrada para a direita, arrastou a tela inteira 547 px
+   * para a esquerda na abertura. clip nao rola de jeito nenhum.
+   */
   overflow: hidden;
+  overflow: clip;
   background:
     radial-gradient(ellipse at 50% 46%, rgba(120, 200, 255, 0.055), transparent 52%),
     radial-gradient(ellipse at 12% 4%, rgba(120, 200, 255, 0.035), transparent 40%),
@@ -223,9 +230,6 @@ input:focus-visible {
   transform: translate(-50%, -50%);
   transition: transform 420ms var(--ease-out);
 }
-/* Um quadro assim, um quadro sem: força o navegador a recalcular o layout. */
-.ponte.recalculando .palco { transform: translate(-50%, -50%) translateZ(0); }
-
 /* Cede espaço quando a conversa abre, em vez de ficar atrás dela. */
 .ponte.com-conversa .palco { transform: translate(-50%, -50%) translateX(-12vw) scale(0.88); }
 
@@ -377,9 +381,15 @@ input:focus-visible {
   transform: translateX(102%);
   opacity: 0;
   pointer-events: none;
-  transition: transform 380ms var(--ease-out), opacity 260ms var(--ease-out);
+  /* Fechada, nem existe para foco e teclado; a visibilidade so cai DEPOIS da
+     animacao de fechar, senao ela some antes de deslizar. */
+  visibility: hidden;
+  transition:
+    transform 380ms var(--ease-out),
+    opacity 260ms var(--ease-out),
+    visibility 0s linear 380ms;
 }
-.gaveta.aberta { transform: none; opacity: 1; pointer-events: auto; }
+.gaveta.aberta { transform: none; opacity: 1; pointer-events: auto; visibility: visible; transition-delay: 0s; }
 .gaveta > * { flex: 1; min-height: 0; }
 
 /* A conversa mantém casca por ser painel de leitura longa, mas discreta. */
