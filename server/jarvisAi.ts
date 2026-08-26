@@ -41,6 +41,7 @@ import {
 import { prepararFala } from "./jarvis/fala";
 import { desmarcar, marcarEsgotado, modeloAtual, proximoModelo } from "./jarvis/modelos";
 import { classificarRecusa } from "./jarvis/recusa";
+import { registrarAcao } from "./acoes/repositorio";
 import { resumirSelecao, selecionarFerramentas } from "./jarvis/selecaoDeFerramentas";
 import { aplicarDelta, lerQuadros, montarMensagem, novoEstado } from "./jarvis/fluxoProvedor";
 import { comRecapitulacao, resumirSaida } from "./jarvis/recapitulacao";
@@ -683,6 +684,18 @@ export async function generateJarvisReply(
         bloqueada: resultado.bloqueada,
         duracaoMs: resultado.duracaoMs,
         resumo: resultado.resumo,
+      });
+
+      // Trilha permanente do que foi feito, fora da conversa. Nunca aguardada.
+      registrarAcao({
+        execucaoId: contextoBase.execucaoId,
+        ferramenta: nome,
+        detalhe: resultado.detail,
+        resumo: resultado.resumo,
+        ok: resultado.ok,
+        bloqueada: resultado.bloqueada,
+        duracaoMs: resultado.duracaoMs,
+        pedido: pedidoDoDono,
       });
 
       historicoDeTentativas.push({

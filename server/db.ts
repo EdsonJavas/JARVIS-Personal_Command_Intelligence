@@ -111,6 +111,23 @@ const MIGRACOES: Migracao[] = [
       )`,
     ],
   },
+  {
+    nome: "005_acoes_executadas",
+    sql: [
+      `CREATE TABLE IF NOT EXISTS acoes_executadas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        execucaoId TEXT NOT NULL,
+        ferramenta TEXT NOT NULL,
+        detalhe TEXT NOT NULL DEFAULT '',
+        resumo TEXT NOT NULL DEFAULT '',
+        ok INTEGER NOT NULL,
+        bloqueada INTEGER NOT NULL DEFAULT 0,
+        duracaoMs INTEGER NOT NULL DEFAULT 0,
+        pedido TEXT NOT NULL DEFAULT '',
+        em INTEGER NOT NULL DEFAULT (unixepoch())
+      )`,
+    ],
+  },
 ];
 
 const CREATE_MIGRACOES_TABLE = `

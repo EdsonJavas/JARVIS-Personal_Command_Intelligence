@@ -13,9 +13,14 @@ import { concluirTurno, prepararTurno } from "./jarvis/turno";
 import { collectWorld } from "./world";
 import { collectDevLife } from "./devLife";
 import { atualizarCartao, listarCartoes, removerCartao } from "./board";
-import { esquecer, listarMemorias, restaurar } from "./memoria/repositorio";
+import { esquecer, historicoDe, listarMemorias, restaurar } from "./memoria/repositorio";
+import { listarAcoes } from "./acoes/repositorio";
+import { modeloAtual, saldoDeModelos } from "./jarvis/modelos";
+import { saldo as saldoDeVoz } from "./vozOrcamento";
+import { servidoresConectados } from "./mcp/ponte";
+import { motivoDeAusencia } from "./mcp/configuracao";
 import { limpar as limparConversa, recentes as conversaRecente } from "./conversa/repositorio";
-import { listarCompromissos } from "./tempo/compromissos";
+import { cancelarCompromisso, listarCompromissos } from "./tempo/compromissos";
 import { responderPergunta } from "./interacao/perguntas";
 import { cancelar, execucaoAtivaDe } from "./execucoes";
 import { TRPCError } from "@trpc/server";
@@ -149,6 +154,18 @@ export const appRouter = router({
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => ({ esquecida: await esquecer(input.id, "apagada no painel") })),
 
+    /** As versões anteriores de uma memória, com o motivo de cada troca. */
+    historico: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) =>
+        (await historicoDe(input.id)).map((h) => ({
+          versao: h.versao,
+          conteudo: h.conteudo,
+          motivo: h.motivo,
+          criadoEm: h.criadoEm.toISOString(),
+        }))
+      ),
+
     /** Esquecer é reversível de propósito; a tela expõe o desfazer. */
     restaurar: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
@@ -168,8 +185,16 @@ export const appRouter = router({
         comparacao: c.comparacao,
         limite: c.limite,
         armado: c.armado,
+        horaDoDia: c.horaDoDia,
+        diasDaSemana: c.diasDaSemana,
+        disparos: c.disparos,
+        ultimoDisparoEm: c.ultimoDisparoEm ? c.ultimoDisparoEm.toISOString() : null,
+        criadoEm: c.criadoEm.toISOString(),
       }));
     }),
+    cancelar: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => ({ cancelado: await cancelarCompromisso(input.id) })),
   }),
 
   jarvis: router({
@@ -231,6 +256,26 @@ export const appRouter = router({
 
     /** A segunda janela não conhece o id da execução; descobre pela sessão. */
     execucaoAtiva: protectedProcedure.query(({ ctx }) => execucaoAtivaDe(ctx.user.id)),
+
+    /** O estado do assistente em si: modelo, cotas, ligações. Para a faixa do painel. */
+    estado: protectedProcedure.query(() => {
+      const conectados = servidoresConectados();
+      return {
+        modelo: modeloAtual(),
+        modelos: saldoDeModelos(),
+        voz: saldoDeVoz(),
+        ligacoes: (["agenda", "email", "github"] as const).map((nome) => ({
+          nome,
+          ligado: conectados.includes(nome),
+        })),
+        motivoDeAusencia: motivoDeAusencia(),
+      };
+    }),
+
+    /** Trilha permanente do que ele executou. Independe da conversa. */
+    acoes: protectedProcedure
+      .input(z.object({ antes: z.number().int().positive().optional(), limite: z.number().int().min(1).max(100).default(50) }).optional())
+      .query(({ input }) => listarAcoes(input ?? {})),
 
     cancelarExecucao: protectedProcedure
       .input(z.object({ execucaoId: z.string().min(1) }))

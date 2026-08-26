@@ -132,18 +132,39 @@ export function obter(id: string, usuarioId: number): Execucao | null {
 }
 
 /** A segunda janela não conhece o id: descobre pela sessão. */
-export function execucaoAtivaDe(
-  usuarioId: number
-): { execucaoId: string; pergunta: PerguntaPendente | null } | null {
+export function execucaoAtivaDe(usuarioId: number): {
+  execucaoId: string;
+  pergunta: PerguntaPendente | null;
+  iniciadaEm: number;
+  /** A ferramenta que está rodando agora, se alguma. */
+  ferramentaAtual: string | null;
+} | null {
   for (const execucao of execucoes.values()) {
     if (execucao.usuarioId === usuarioId && execucao.estado !== "terminada") {
       return {
         execucaoId: execucao.id,
         pergunta: ganchosDePergunta.abertaDe(execucao.id),
+        iniciadaEm: execucao.iniciadaEm,
+        ferramentaAtual: ferramentaEmCurso(execucao.eventos),
       };
     }
   }
   return null;
+}
+
+/** O último `acao_inicio` sem `acao_fim` correspondente. */
+function ferramentaEmCurso(eventos: EventoJarvis[]): string | null {
+  const encerradas = new Set<string>();
+  let atual: string | null = null;
+  for (let i = eventos.length - 1; i >= 0; i -= 1) {
+    const e = eventos[i];
+    if (e.tipo === "acao_fim") encerradas.add(e.acaoId);
+    else if (e.tipo === "acao_inicio" && !encerradas.has(e.acaoId)) {
+      atual = e.ferramenta;
+      break;
+    }
+  }
+  return atual;
 }
 
 export type ResultadoAnexar =

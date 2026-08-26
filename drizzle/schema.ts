@@ -148,3 +148,23 @@ export const conversa = sqliteTable("conversa", {
 });
 
 export type LinhaDeConversa = typeof conversa.$inferSelect;
+
+/**
+ * O que o Jarvis executou na máquina, permanente. A conversa é do dono e ele
+ * limpa quando quer; a trilha do que foi feito não depende dela.
+ */
+export const acoesExecutadas = sqliteTable("acoes_executadas", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  execucaoId: text("execucaoId").notNull(),
+  ferramenta: text("ferramenta").notNull(),
+  detalhe: text("detalhe").notNull().default(""),
+  resumo: text("resumo").notNull().default(""),
+  ok: integer("ok", { mode: "boolean" }).notNull(),
+  bloqueada: integer("bloqueada", { mode: "boolean" }).notNull().default(false),
+  duracaoMs: integer("duracaoMs").notNull().default(0),
+  /** A fala do dono que motivou o turno, encurtada. */
+  pedido: text("pedido").notNull().default(""),
+  em: integer("em", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
