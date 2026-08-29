@@ -218,3 +218,58 @@ describe("cura da marcação errada", () => {
     expect(modelosPedidos(fetchMock)).toEqual(["modelo-a", "modelo-b", "modelo-b"]);
   });
 });
+
+describe("teto de saída por fase", () => {
+  function corpo(mock: ReturnType<typeof vi.fn>, i: number) {
+    return JSON.parse(String((mock.mock.calls[i]?.[1] as RequestInit).body));
+  }
+
+  it("a rodada de ferramenta é apertada; a que ESCREVE a resposta é folgada", async () => {
+    // Response novo por chamada: o corpo só se lê uma vez.
+    const comFerramenta = () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "limpar_painel", arguments: "{}" } }] } }],
+        }),
+        { status: 200 }
+      );
+    // Estoura o orçamento para forçar o caminho de fechamento.
+    const fetchMock = vi.fn().mockImplementation(async () => comFerramenta());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateJarvisReply([{ role: "user", content: "limpa o painel" }], {
+      orcamento: { maxRodadas: 2 },
+    });
+
+    const rodada = corpo(fetchMock, 0).max_tokens;
+    const fechamento = corpo(fetchMock, fetchMock.mock.calls.length - 1).max_tokens;
+    expect(rodada).toBe(2048);
+    // Antes: 1200 para tudo, e o raciocínio comia o teto da resposta.
+    expect(fechamento).toBeGreaterThan(rodada);
+  });
+
+  it("resposta vazia é repetida UMA vez com teto maior, em vez de virar 'ele travou'", async () => {
+    const vazia = () => new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "" } }] }), { status: 200 });
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => vazia())
+      .mockImplementationOnce(async () => texto("Cento e vinte gigas livres, senhor."));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resposta = await generateJarvisReply([{ role: "user", content: "quanto de disco?" }]);
+
+    expect(resposta.reply).toBe("Cento e vinte gigas livres, senhor.");
+    expect(corpo(fetchMock, 1).max_tokens).toBeGreaterThan(corpo(fetchMock, 0).max_tokens);
+  });
+
+  it("vazia duas vezes continua sendo erro — a retentativa não vira laço", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "" } }] }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const erro = await generateJarvisReply([{ role: "user", content: "oi" }]).catch((e) => e);
+    expect(erro).toBeInstanceOf(JarvisProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

@@ -20,6 +20,7 @@ import {
 } from "./execucoes";
 import { registrar as registrarConversa } from "./conversa/repositorio";
 import { refletir } from "./aprendizado/reflexao";
+import { modeloAtual } from "./jarvis/modelos";
 import { lembrar } from "./memoria/repositorio";
 import { generateJarvisReply, JarvisProviderError } from "./jarvisAi";
 import { concluirTurno, prepararTurno } from "./jarvis/turno";
@@ -169,7 +170,10 @@ jarvisStreamRouter.post("/stream", async (req: Request, res: Response) => {
     emitir(execucaoId, {
       tipo: "inicio",
       execucaoId,
-      modelo: process.env.LLM_MODEL?.trim() || "gemini-3.6-flash",
+      // O modelo que VAI responder, não um literal. Antes daqui saía sempre
+      // "gemini-3.6-flash", mesmo com o rodízio já rebaixado ao flash-lite — e
+      // o dono não tinha como saber por que as respostas pioraram.
+      modelo: modeloAtual(),
       bootId: BOOT_ID,
     });
 

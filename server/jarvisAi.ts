@@ -52,6 +52,16 @@ const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
 /** Quantas rodadas mantêm a saída crua antes de virar resumo. */
 const RODADAS_CRUAS = 2;
 
+/**
+ * Tetos de saída, por fase do turno.
+ *
+ * A rodada que escolhe ferramenta emite uma chamada e uma frase de narração —
+ * cabe folgada. A que ESCREVE a resposta é a que o dono lê, e é onde o teto
+ * apertado aparecia como resposta truncada ou vazia.
+ */
+const TETO_FERRAMENTA = 2048;
+const TETO_RESPOSTA = 8192;
+
 export const acaoSchema = z.object({
   name: z.string(),
   detail: z.string(),
@@ -261,6 +271,8 @@ async function callProvider(
      * sendo escrita.
      */
     aoTexto?: (pedaco: string) => void;
+    /** Teto de tokens da saída. Ausente = o da rodada de ferramenta. */
+    tetoDeSaida?: number;
     /** Interno: já dormiu uma vez nesta chamada. Impede laço de espera. */
     jaEsperou?: boolean;
   }
@@ -294,7 +306,17 @@ async function callProvider(
           ? { tools: toolSchemas(opcoes.permitidas), tool_choice: "auto" }
           : { tool_choice: "none" }),
         temperature: 0.65,
-        max_tokens: 1200,
+        /*
+         * Teto por FASE, não um número só.
+         *
+         * Nos modelos Gemini 3 os tokens de raciocínio saem deste mesmo teto.
+         * Com 1200 para tudo, uma rodada que pensa um pouco gasta o teto
+         * inteiro pensando e devolve `content` vazio — que virava
+         * `invalid_reply` e, para o dono, "ele travou". A rodada que escolhe
+         * ferramenta produz pouco texto e cabe folgada em 2048; a que ESCREVE
+         * a resposta precisa de espaço de verdade.
+         */
+        max_tokens: opcoes.tetoDeSaida ?? 2048,
         ...(emFluxo ? { stream: true } : {}),
       }),
       signal: opcoes.sinal,
@@ -562,7 +584,25 @@ export async function generateJarvisReply(
     const chamadas = mensagem.tool_calls ?? [];
 
     if (chamadas.length === 0) {
-      const texto = mensagem.content?.trim();
+      let texto = mensagem.content?.trim();
+
+      /*
+       * Resposta vazia sem chamada de ferramenta quase sempre é teto de saída
+       * consumido pelo raciocínio, não defeito do provedor. Uma segunda
+       * tentativa com espaço de sobra resolve — e é muito melhor que devolver
+       * "ele travou" ao dono. Uma só, para não virar laço nem queimar cota.
+       */
+      if (!texto) {
+        console.warn("[Jarvis] resposta vazia; repetindo com teto maior.");
+        const segunda = await callProvider(endpoint, apiKey, model, conversa, {
+          sinal,
+          comFerramentas: false,
+          tetoDeSaida: TETO_RESPOSTA,
+          aoTexto: (pedaco) => emitir({ tipo: "resposta_parcial", texto: pedaco }),
+        }).catch(() => null);
+        texto = segunda?.content?.trim();
+      }
+
       if (!texto) {
         throw new JarvisProviderError(
           "invalid_reply",
@@ -761,7 +801,7 @@ export async function generateJarvisReply(
       apiKey,
       model,
       [...conversa, { role: "system", content: notaDeFechamento(motivoDeParada) }],
-      { sinal, comFerramentas: false }
+      { sinal, comFerramentas: false, tetoDeSaida: TETO_RESPOSTA }
     );
   } catch (error) {
     if (sinal.aborted) return fecharCancelado();
