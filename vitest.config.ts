@@ -41,7 +41,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["server/**/*.test.ts", "server/**/*.spec.ts", "client/src/lib/**/*.test.ts"],
+    include: ["server/**/*.test.ts", "server/**/*.spec.ts", "client/src/lib/**/*.test.ts",
+      /*
+       * `shared/` também. Quando `fala.ts` mudou de `server/jarvis/` para cá,
+       * o teste veio junto — e parou de rodar em silêncio, porque não estava
+       * no padrão. Teste que não roda é pior que teste que não existe.
+       */
+      "shared/**/*.test.ts"],
     // Na primeira execução após uma instalação limpa o cache de transformação
     // está vazio, e o beforeAll que importa os módulos dinamicamente pode
     // estourar o limite padrão de 10s sem que haja nada errado com o teste.

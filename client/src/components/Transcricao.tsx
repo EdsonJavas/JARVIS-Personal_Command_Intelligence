@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useJarvisSession } from "@/contexts/JarvisSessionContext";
+import { dividirResposta } from "@shared/fala";
 
 /**
  * O que ele está dizendo, correndo no alto da tela.
@@ -41,7 +42,10 @@ export function Transcricao() {
   if (pergunta) registrar(pergunta.pergunta, "pergunta");
 
   const ultimaMensagem = messages[messages.length - 1];
-  if (ultimaMensagem?.role === "assistant") registrar(ultimaMensagem.content, "resposta");
+  // Só a parte falada: a legenda corre no alto da tela e não é lugar de tabela.
+  if (ultimaMensagem?.role === "assistant") {
+    registrar(dividirResposta(ultimaMensagem.content).fala, "resposta");
+  }
 
   const linhas = linhasRef.current;
 

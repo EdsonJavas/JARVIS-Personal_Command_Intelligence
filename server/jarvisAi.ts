@@ -38,7 +38,7 @@ import {
   deveDesistir,
   type RegistroDeTentativa,
 } from "./jarvis/falhas";
-import { prepararFala } from "./jarvis/fala";
+import { falaDaResposta } from "./jarvis/fala";
 import { desmarcar, marcarEsgotado, modeloAtual, proximoModelo } from "./jarvis/modelos";
 import { classificarRecusa } from "./jarvis/recusa";
 import { registrarAcao } from "./acoes/repositorio";
@@ -611,7 +611,7 @@ export async function generateJarvisReply(
       }
       return {
         reply: texto,
-        fala: prepararFala(texto),
+        fala: falaDaResposta(texto),
         model,
         actions,
         motivoDeParada: "concluido",
@@ -812,14 +812,14 @@ export async function generateJarvisReply(
 
   const texto = fechamento?.content?.trim();
   if (texto) {
-    return { reply: texto, fala: prepararFala(texto), model, actions, motivoDeParada };
+    return { reply: texto, fala: falaDaResposta(texto), model, actions, motivoDeParada };
   }
 
   // Fechamento vazio ou falho: monta uma resposta determinística com o que foi
   // apurado. Jogar fora várias rodadas de trabalho real por causa de uma
   // mensagem vazia seria o pior desfecho possível.
   const reply = montarRespostaDeterministica(actions, motivoDeParada);
-  return { reply, fala: prepararFala(reply), model, actions, motivoDeParada };
+  return { reply, fala: falaDaResposta(reply), model, actions, motivoDeParada };
 }
 
 function montarRespostaDeterministica(

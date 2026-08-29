@@ -84,3 +84,48 @@ describe("fala em fluxo", () => {
     ]);
   });
 });
+
+describe("resposta em duas partes", () => {
+  it("a voz para na linha em branco: o detalhe é para a tela", () => {
+    const fluxo = criarFalaEmFluxo();
+
+    // As duas frases do guia saem; a linha em branco fecha a segunda.
+    expect(fluxo.receber("Ele está com quase dois gigas, senhor. Deixei na tela.\n\n")).toEqual([
+      "Ele está com quase dois gigas, senhor.",
+      "Deixei na tela.",
+    ]);
+    // Daqui para baixo é tela, e a voz fica muda.
+    expect(fluxo.receber("## Detalhe\n\n| processo | memória |\n| Cursor | 1,87 GB |\n")).toEqual([]);
+    expect(fluxo.receber("Mais uma frase inteira que não deve ser falada. E outra.\n")).toEqual([]);
+  });
+
+  it("concluir compara contra a parte falada, não contra o texto inteiro", () => {
+    const fluxo = criarFalaEmFluxo();
+    fluxo.receber("Ele está com quase dois gigas, senhor. ");
+
+    const falta = fluxo.concluir(
+      "Ele está com quase dois gigas, senhor. Deixei na tela.\n\n| a | b |\n|---|---|\n| 1 | 2 |"
+    );
+
+    expect(falta.join(" ")).not.toContain("|");
+    expect(falta.join(" ")).toContain("Deixei na tela.");
+  });
+
+  it("resposta de uma parte só continua como sempre foi", () => {
+    const fluxo = criarFalaEmFluxo();
+    expect(fluxo.concluir("Sobrou um giga e meio, senhor.")).toEqual([
+      "Sobrou um giga e meio, senhor.",
+    ]);
+  });
+
+  it("nova rodada reabre a voz — o guia fechado não vale para o turno seguinte", () => {
+    const fluxo = criarFalaEmFluxo();
+    fluxo.receber("Vou conferir agora. Já volto.\n\ndetalhe qualquer\n");
+    fluxo.novaRodada();
+
+    expect(fluxo.receber("Agora sim, a resposta de verdade. E esta segunda também.\n")).toEqual([
+      "Agora sim, a resposta de verdade.",
+      "E esta segunda também.",
+    ]);
+  });
+});

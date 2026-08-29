@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pareceComando, prepararFala, LIMITE_FALA } from "./fala";
+import { dividirResposta, falaDaResposta, pareceComando, prepararFala, LIMITE_FALA } from "./fala";
 
 describe("preparar fala", () => {
   it("remove marcação, emoji e endereço, preservando o nome do arquivo", () => {
@@ -73,5 +73,53 @@ describe("comando não se soletra", () => {
   it("comando solto no texto, sem crase, também some", () => {
     const fala = prepararFala("Usei Stop-Process -Name chrome -Force para encerrar. Ficou leve, senhor.");
     expect(fala).toBe("Usei o comando para encerrar. Ficou leve, senhor.");
+  });
+});
+
+describe("dividir a resposta em falada e escrita", () => {
+  it("a abertura vira fala; a tabela fica na tela", () => {
+    const texto =
+      "Ele está com quase dois gigas, senhor, e o indexador ainda roda.\n\n" +
+      "| processo | memória |\n|---|---|\n| Cursor | 1,87 GB |";
+    const { fala, detalhe } = dividirResposta(texto);
+
+    expect(fala).toBe("Ele está com quase dois gigas, senhor, e o indexador ainda roda.");
+    expect(fala).not.toContain("|");
+    expect(detalhe).toContain("Cursor");
+  });
+
+  it("sem linha em branco, tudo continua sendo fala — o pior caso é o de antes", () => {
+    const texto = "Sobrou um giga e meio de oito, senhor.";
+    expect(dividirResposta(texto)).toEqual({ fala: texto, detalhe: "" });
+  });
+
+  it("abertura que começa com estrutura não é fala: o modelo não seguiu o contrato", () => {
+    for (const inicio of ["## Resumo", "- primeiro item da lista", "| a | b |", "1. primeiro passo"]) {
+      const texto = `${inicio}\n\nO resto do texto vem aqui, com folga.`;
+      expect(dividirResposta(texto).fala).toBe(texto);
+      expect(dividirResposta(texto).detalhe).toBe("");
+    }
+  });
+
+  it("abertura curta demais é título disfarçado, não fala", () => {
+    const texto = "Disco C\n\nDuzentos e vinte gigas livres de um total de trezentos.";
+    expect(dividirResposta(texto).fala).toBe(texto);
+  });
+
+  it("falaDaResposta higieniza e respeita o teto, sobre a abertura", () => {
+    const texto =
+      "Achei o **contrato.pdf** em Downloads, senhor.\n\n" +
+      "Caminho: `C:\Users\es553\Downloads\contrato.pdf`\n\n```powershell\nGet-Item x\n```";
+    const fala = falaDaResposta(texto);
+
+    expect(fala).toBe("Achei o contrato.pdf em Downloads, senhor.");
+    expect(fala).not.toContain("**");
+    expect(fala).not.toContain("Get-Item");
+    expect(fala.length).toBeLessThanOrEqual(LIMITE_FALA);
+  });
+
+  it("texto vazio não quebra", () => {
+    expect(dividirResposta("")).toEqual({ fala: "", detalhe: "" });
+    expect(dividirResposta("   \n\n   ")).toEqual({ fala: "", detalhe: "" });
   });
 });

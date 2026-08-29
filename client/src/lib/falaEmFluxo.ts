@@ -1,4 +1,4 @@
-import { prepararFala } from "@shared/fala";
+import { dividirResposta, prepararFala } from "@shared/fala";
 
 /**
  * Fala a resposta enquanto ela ainda está chegando.
@@ -71,6 +71,12 @@ function normalizar(texto: string): string {
 
 export function criarFalaEmFluxo(): FalaEmFluxo {
   let rascunho = "";
+  /*
+   * A resposta tem duas partes, e só a primeira é falada. Assim que a linha
+   * em branco chega pelo fluxo, o que vem depois é para a TELA — e continuar
+   * emitindo faria a voz ler a tabela em voz alta.
+   */
+  let guiaFechado = false;
   const ditas: string[] = [];
 
   const registrar = (frases: string[]): string[] => {
@@ -81,7 +87,19 @@ export function criarFalaEmFluxo(): FalaEmFluxo {
 
   return {
     receber: (pedaco) => {
+      if (guiaFechado) return [];
       rascunho += pedaco;
+
+      const quebra = /\n[ \t]*\n/.exec(rascunho);
+      if (quebra) {
+        guiaFechado = true;
+        // A quebra de linha no fim força a última frase do guia a fechar: a
+        // fronteira dela é justamente a linha em branco.
+        const guia = `${rascunho.slice(0, quebra.index)}\n`;
+        rascunho = "";
+        return registrar(separarFrases(guia).prontas);
+      }
+
       const { prontas, resto } = separarFrases(rascunho);
       rascunho = resto;
       return registrar(prontas);
@@ -89,12 +107,15 @@ export function criarFalaEmFluxo(): FalaEmFluxo {
 
     novaRodada: () => {
       rascunho = "";
+      guiaFechado = false;
       ditas.length = 0;
     },
 
     concluir: (textoFinal) => {
-      const inteiro = normalizar(textoFinal);
+      // Só a parte falada. O detalhe da tela nunca vira voz.
+      const inteiro = normalizar(dividirResposta(textoFinal).fala);
       rascunho = "";
+      guiaFechado = false;
       if (!inteiro) return [];
 
       // O que já foi dito é um prefixo do texto final, frase a frase. Anda
