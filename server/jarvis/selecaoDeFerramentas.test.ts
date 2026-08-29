@@ -68,3 +68,44 @@ describe("seleção de ferramentas", () => {
     expect(escolhidas.some((n) => n.startsWith("agenda_"))).toBe(false);
   });
 });
+
+describe("as frases que falhavam de verdade", () => {
+  const nativas = ["estado_da_maquina", "buscar_na_web"];
+  const externas = ["agenda_list-events", "email_search_emails", "github_search_code"];
+  const escolher = (pedido: string, jaUsadas: string[] = []) =>
+    selecionarFerramentas({ disponiveis: [...nativas, ...externas], pedido, jaUsadas });
+
+  it.each([
+    ["responde pro cliente", "email_"],
+    ["tem alguma coisa marcada pra sexta?", "agenda_"],
+    ["o que eu tenho amanhã?", "agenda_"],
+    ["o que tá pendente no jarvis-web?", "github_"],
+    ["encaminha aquele anexo", "email_"],
+    ["minha semana está cheia?", "agenda_"],
+  ])("%s → %s", (pedido, prefixo) => {
+    expect(escolher(pedido).some((n) => n.startsWith(prefixo))).toBe(true);
+  });
+
+  it("o grupo sobrevive ao turno: 'e amanhã?' mantém a agenda", () => {
+    // Sem contexto, "e amanhã?" traz agenda pelo gatilho próprio.
+    // O que este teste prova é o caso sem gatilho nenhum:
+    expect(escolher("e o segundo?").some((n) => n.startsWith("agenda_"))).toBe(false);
+    expect(
+      escolher("e o segundo?", ["agenda_list-events"]).some((n) => n.startsWith("agenda_"))
+    ).toBe(true);
+  });
+
+  it("habilitar_grupo destrava pelo prefixo puro", () => {
+    expect(escolher("acha aquilo", ["agenda_"]).some((n) => n.startsWith("agenda_"))).toBe(true);
+  });
+
+  it("REGRESSÃO: saudação não traz grupo externo — foi o caso dos 131 s", () => {
+    for (const oi of ["olá, tudo bem?", "oi", "bom dia"]) {
+      expect(escolher(oi)).toEqual(nativas);
+    }
+  });
+
+  it("'me manda uma mensagem' não é e-mail", () => {
+    expect(escolher("me manda uma mensagem").some((n) => n.startsWith("email_"))).toBe(false);
+  });
+});

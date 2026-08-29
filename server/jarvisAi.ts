@@ -49,8 +49,22 @@ import { comRecapitulacao, resumirSaida } from "./jarvis/recapitulacao";
 const DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
 const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
 
-/** Quantas rodadas mantêm a saída crua antes de virar resumo. */
-const RODADAS_CRUAS = 2;
+/**
+ * Quanto de saída CRUA de ferramenta cabe no contexto antes de encolher.
+ *
+ * Em caracteres, não em rodadas: contar rodadas jogava fora medição de graça
+ * num turno pequeno. Com janela de um milhão de tokens, 24 KB é irrisório, e
+ * na maioria dos turnos nada é podado.
+ */
+const TETO_DE_SAIDAS_CRUAS = 24_000;
+/** Primeiro corte: ainda carrega os números medidos. */
+const RESUMO_LARGO = 1200;
+/** Segundo corte, só para o que continuar estourando: a linha de sempre. */
+const RESUMO_CURTO = 0;
+/** Quanto de original volta antes da chamada que escreve a resposta. */
+const TETO_NO_FECHAMENTO = 60_000;
+/** Quantos turnos atrás ainda mantêm um grupo externo disponível. */
+const TURNOS_QUE_LEMBRAM_O_GRUPO = 3;
 
 /**
  * Tetos de saída, por fase do turno.
@@ -185,7 +199,7 @@ type ProviderMessage = {
   }[];
   tool_call_id?: string;
   /** Marca interna: identifica saídas de ferramenta que a poda pode encolher. */
-  _podavel?: { rodada: number; resumo: string };
+  _podavel?: { rodada: number; resumo: string; original: string; ok: boolean; ferramenta: string };
 };
 
 /**
@@ -410,20 +424,79 @@ async function callProvider(
 }
 
 /**
- * Encolhe saídas antigas de ferramenta, preservando cruas as das últimas
- * rodadas.
+ * Encolhe saídas antigas de ferramenta quando o contexto aperta.
  *
  * Sem isto, vinte e quatro saídas de seis mil caracteres são reenviadas a cada
  * uma das doze rodadas, e o custo em tokens cresce com o quadrado das rodadas.
- * O limite que se bate primeiro não é o de requisições por minuto, é o de
- * tokens — e ele estoura no meio da tarefa, com metade do trabalho feito.
+ *
+ * Três coisas mudaram, e as três importam:
+ *
+ * 1. O ORIGINAL NUNCA SE PERDE. Antes isto fazia `content = resumo` e o texto
+ *    medido sumia para sempre — na rodada sete o modelo concluía sobre 160
+ *    caracteres do que tinha medido na rodada um. Agora o original fica em
+ *    `_podavel.original`, que `callProvider` já remove antes de ir à rede: não
+ *    custa um byte de tráfego, só memória do processo.
+ *
+ * 2. PODA POR ORÇAMENTO, não por idade. Enquanto as saídas cruas couberem no
+ *    teto, nada é podado — e na maioria dos turnos elas cabem. Contar rodadas
+ *    jogava fora medição de graça em turno pequeno.
+ *
+ * 3. PODA GRADUADA. O primeiro corte ainda carrega números; só o que continuar
+ *    estourando cai para a linha de 160.
+ *
+ * A primeira saída de cada ferramenta distinta nunca é podada: é a medição de
+ * referência contra a qual todo o resto do turno é comparado.
  */
-function podarConversa(conversa: ProviderMessage[], rodadaAtual: number): void {
-  for (const mensagem of conversa) {
-    if (!mensagem._podavel) continue;
-    if (rodadaAtual - mensagem._podavel.rodada < RODADAS_CRUAS) continue;
-    if (mensagem.content === mensagem._podavel.resumo) continue;
-    mensagem.content = mensagem._podavel.resumo;
+function podarConversa(conversa: ProviderMessage[]): void {
+  const podaveis = conversa.filter((m) => m._podavel);
+  const tamanho = (m: ProviderMessage) => (m.content ?? "").length;
+  const total = () => podaveis.reduce((soma, m) => soma + tamanho(m), 0);
+  if (total() <= TETO_DE_SAIDAS_CRUAS) return;
+
+  const primeiraDaFerramenta = new Set<ProviderMessage>();
+  const jaVistas = new Set<string>();
+  for (const m of podaveis) {
+    const nome = m._podavel!.ferramenta;
+    if (!jaVistas.has(nome)) {
+      jaVistas.add(nome);
+      primeiraDaFerramenta.add(m);
+    }
+  }
+
+  // Da mais antiga para a mais nova, em dois níveis, até caber.
+  for (const nivel of [RESUMO_LARGO, RESUMO_CURTO]) {
+    for (const m of podaveis) {
+      if (total() <= TETO_DE_SAIDAS_CRUAS) return;
+      if (primeiraDaFerramenta.has(m) && nivel === RESUMO_LARGO) continue;
+      const encolhido =
+        nivel === RESUMO_CURTO
+          ? m._podavel!.resumo
+          : resumirSaida(m._podavel!.original, m._podavel!.ok, RESUMO_LARGO);
+      if (encolhido.length < tamanho(m)) m.content = encolhido;
+    }
+  }
+}
+
+/**
+ * Devolve as saídas originais antes da chamada que ESCREVE a resposta.
+ *
+ * É a correção que mais importa de todas: o fechamento é a rodada em que o
+ * modelo redige o que apurou, e ele estava lendo resumos de 160 caracteres do
+ * próprio trabalho. Com o original de volta, a resposta final é escrita contra
+ * os dados de verdade.
+ *
+ * Da mais recente para a mais antiga, porque se não couber tudo é o trabalho
+ * recente que mais importa para a conclusão.
+ */
+function restaurarParaFechamento(conversa: ProviderMessage[], teto = TETO_NO_FECHAMENTO): void {
+  let usado = 0;
+  for (let i = conversa.length - 1; i >= 0; i -= 1) {
+    const m = conversa[i];
+    if (!m._podavel) continue;
+    const original = m._podavel.original;
+    if (usado + original.length > teto) continue;
+    m.content = original;
+    usado += original.length;
   }
 }
 
@@ -494,6 +567,9 @@ export async function generateJarvisReply(
     emitir,
     interativo: opcoes.interativo ?? true,
     autorizacoes: new Set<string>(),
+    destravarGrupo: (prefixo: string) => {
+      if (!ferramentasUsadas.includes(prefixo)) ferramentasUsadas.push(prefixo);
+    },
     perguntasFeitas: 0,
     creditarEspera: (ms: number) => {
       estado = creditarEspera(estado, ms);
@@ -517,14 +593,37 @@ export async function generateJarvisReply(
    */
   const todasAsFerramentas = nomesDasFerramentas();
   const pedidoDoDono = [...mensagens].reverse().find((m) => m.role === "user")?.content ?? "";
-  const ferramentasUsadas: string[] = [];
+  /*
+   * O grupo sobrevive ao TURNO, não só à rodada.
+   *
+   * Era um array local recriado a cada turno: um "e amanhã?" logo depois de
+   * "vê minha agenda" perdia a agenda que ele acabou de usar, e ele respondia
+   * "não tenho acesso à sua agenda". Não precisa de estado novo — o histórico
+   * já carrega as ações de cada turno, e o banco as restaura.
+   *
+   * Três turnos de memória: o bastante para o acompanhamento, pouco o bastante
+   * para uma pergunta de agenda de ontem não taxar todo pedido de hoje.
+   */
+  const ferramentasUsadas: string[] = janela
+    .filter((m) => m.role === "assistant")
+    .slice(-TURNOS_QUE_LEMBRAM_O_GRUPO)
+    .flatMap((m) => (m as { acoes?: { name: string }[] }).acoes ?? [])
+    .map((a) => a.name);
 
-  const permitidasAgora = () =>
-    selecionarFerramentas({
+  // Uma vez por turno: sem isto ninguém consegue ver o que o filtro cortou.
+  let jaLogou = false;
+  const permitidasAgora = () => {
+    const escolhidas = selecionarFerramentas({
       disponiveis: todasAsFerramentas,
       pedido: pedidoDoDono,
       jaUsadas: ferramentasUsadas,
     });
+    if (!jaLogou) {
+      jaLogou = true;
+      console.info(`[Ferramentas] ${resumirSelecao(todasAsFerramentas, escolhidas)}`);
+    }
+    return escolhidas;
+  };
 
   let rodada = 0;
   let motivoDeParada: MotivoDeParada = "concluido";
@@ -760,13 +859,20 @@ export async function generateJarvisReply(
         role: "tool",
         tool_call_id: chamada.id,
         content: resultado.output,
-        _podavel: { rodada, resumo: resultado.resumo },
+        _podavel: {
+          rodada,
+          resumo: resultado.resumo,
+          // Guardado para o fechamento ler o que foi medido, não o resumo.
+          original: resultado.output,
+          ok: resultado.ok,
+          ferramenta: nome,
+        },
       });
 
       if (sinal.aborted) return fecharCancelado();
     }
 
-    podarConversa(conversa, rodada);
+    podarConversa(conversa);
 
     /*
      * Gratuita só quando a rodada foi INTEIRAMENTE de pergunta e tudo o que o
@@ -796,6 +902,8 @@ export async function generateJarvisReply(
   let fechamento: ProviderMessage | null = null;
   try {
     model = modeloAtual();
+    // A rodada que ESCREVE a resposta lê o que foi medido, não o resumo dele.
+    restaurarParaFechamento(conversa);
     fechamento = await callProvider(
       endpoint,
       apiKey,

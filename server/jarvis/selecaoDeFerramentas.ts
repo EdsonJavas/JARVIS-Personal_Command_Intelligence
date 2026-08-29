@@ -25,18 +25,34 @@ export type GrupoExterno = {
 export const GRUPOS: GrupoExterno[] = [
   {
     prefixo: "agenda_",
+    /*
+     * Radical + `\w*`, e não a lista de conjugações.
+     *
+     * Enumerar à mão sempre perde uma flexão: havia `marcar|marque|marcado` e
+     * "tem algo MARCADA pra sexta?" não casava com nenhum. Dia da semana e
+     * "amanhã" entram porque são como se pergunta pela agenda de verdade.
+     *
+     * Este é o grupo caro — 33 KB de esquema — então ampliar aqui custa. Vale
+     * mesmo assim: errar para menos faz o Jarvis dizer "não tenho acesso à sua
+     * agenda", que é mentira e é pior do que alguns segundos.
+     */
     gatilhos:
-      /\b(agenda|calendario|calendar|evento|eventos|reuniao|reunioes|compromisso|compromissos|marcar|marque|marcado|agendar|agende|remarcar|horario|disponibilidade|disponivel|ocupado|livre|semana|compromet)/,
+      /\b(agend\w*|calendari\w*|calendar|event\w*|reuni\w*|compromiss\w*|marc\w*|remarc\w*|horari\w*|disponib\w*|ocupad\w*|livre|amanha|hoje|depois de amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo|meu dia|minha semana|prazo|vencimento|compromet\w*)/,
   },
   {
     prefixo: "github_",
     gatilhos:
-      /\b(github|repositorio|repositorios|repo|repos|pull request|pull requests|pr|prs|issue|issues|commit|commits|branch|branches|ramo|merge|mesclar|fork|clone|readme|codigo no github|meu codigo|meus projetos)\b/,
+      /\b(github|repositori\w*|repo|repos|pull request|pull requests|pr|prs|issue\w*|commit\w*|branch\w*|ramo|merge|mesclar|fork|clone|readme|pendent\w*|pendencia\w*|em aberto|meu codigo|meus projetos)\b/,
   },
   {
     prefixo: "email_",
+    /*
+     * `mensagem` saiu de propósito: "me manda uma mensagem" quase nunca é
+     * e-mail, e o grupo entrava à toa. Quem cobre o caso raro é
+     * `habilitar_grupo`, que custa uma rodada em vez de todo turno.
+     */
     gatilhos:
-      /\b(email|e-mail|emails|mensagem|mensagens|caixa de entrada|inbox|gmail|remetente|destinatario|responder|responda|encaminhar|enviar|envie|rascunho|spam|anexo|assinatura|nao lidos|nao lidas)/,
+      /\b(e-?mail\w*|gmail|caixa de entrada|inbox|remetent\w*|destinatari\w*|respond\w*|responda|encaminh\w*|rascunh\w*|spam|anexo|assinatura|nao lid\w*)/,
   },
 ];
 

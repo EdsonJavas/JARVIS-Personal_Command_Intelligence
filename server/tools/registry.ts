@@ -47,6 +47,14 @@ export type AvaliacaoDeRisco = {
  */
 export type ContextoDeExecucao = {
   execucaoId: string;
+  /**
+   * Põe um grupo externo no catálogo da rodada seguinte.
+   *
+   * Só o laço agêntico sabe montar o pedido de ferramentas, então a ferramenta
+   * `habilitar_grupo` avisa por aqui em vez de mexer no catálogo global — o
+   * que valeria para todas as conversas, não só para esta.
+   */
+  destravarGrupo?: (prefixo: string) => void;
   /** Identificador desta chamada, para casar inicio e fim na interface. */
   acaoId: string;
   sinal: AbortSignal;
@@ -543,6 +551,44 @@ const atualizarPainel: ToolDefinition = {
   },
 };
 
+/**
+ * A válvula de escape do filtro de ferramentas.
+ *
+ * O catálogo externo é filtrado por assunto porque mandar as 64 a cada rodada
+ * levava uma saudação a 131 segundos. O preço é errar às vezes para menos — e
+ * aí o modelo não VIA a ferramenta e respondia "não tenho acesso à sua
+ * agenda", que é mentira e é a cara da burrice.
+ *
+ * Com isto ele pede o grupo e continua na rodada seguinte. Custa ~200 bytes de
+ * esquema permanente em vez dos 33 KB da agenda.
+ */
+const habilitarGrupo: ToolDefinition = {
+  name: "habilitar_grupo",
+  description:
+    "Destrava um grupo de ferramentas externas que não está no seu catálogo agora. Use quando precisar de agenda, e-mail ou GitHub e não encontrar a ferramenta. Na rodada seguinte o grupo inteiro estará disponível. NUNCA diga ao Senhor que não tem acesso a algo que isto destrava.",
+  parameters: {
+    type: "object",
+    properties: {
+      grupo: { type: "string", enum: ["agenda", "email", "github"], description: "Qual grupo" },
+    },
+    required: ["grupo"],
+  },
+  efeito: "leitura",
+  describe: (args) => `destravar ${args.grupo}`,
+  narrar: () => "Vou buscar a ferramenta certa.",
+  execute: async (args, ctx) => {
+    const grupo = String(args.grupo ?? "");
+    if (!["agenda", "email", "github"].includes(grupo)) {
+      return { texto: `Não existe o grupo "${grupo}". Há agenda, email e github.`, ok: false };
+    }
+    ctx.destravarGrupo?.(`${grupo}_`);
+    return {
+      texto: `O grupo ${grupo} está disponível a partir da próxima rodada. Chame a ferramenta agora.`,
+      ok: true,
+    };
+  },
+};
+
 const limparPainel: ToolDefinition = {
   name: "limpar_painel",
   description: "Remove todos os cartões que você deixou no painel.",
@@ -744,6 +790,7 @@ export const TOOLS: ToolDefinition[] = [
   verProjetos,
   mostrarNoPainel,
   atualizarPainel,
+  habilitarGrupo,
   limparPainel,
   buscarNaWeb,
   perguntarAoUsuario,
@@ -802,6 +849,8 @@ export const ISENTAS_DE_RISCO = new Set([
   "ver_projetos",
   "mostrar_no_painel",
   "limpar_painel",
+  // Só destrava catálogo. Não toca na máquina nem em conta nenhuma.
+  "habilitar_grupo",
   // Mexe só no painel: marcar passo, fixar, remover cartão. Nada na máquina.
   "atualizar_painel",
   "buscar_na_web",
