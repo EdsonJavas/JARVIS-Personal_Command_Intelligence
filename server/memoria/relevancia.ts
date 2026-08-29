@@ -1,4 +1,5 @@
 import type { Memoria } from "../../drizzle/schema";
+import { expandirConsulta } from "./sinonimos";
 
 /**
  * Escolha do que entra no contexto.
@@ -8,7 +9,9 @@ import type { Memoria } from "../../drizzle/schema";
  * dentro de um orçamento de caracteres.
  */
 
-export const ORCAMENTO_DE_CHARS = 1600;
+/* 3000 e não 1600: são 1,4 KB a mais num prompt que já carrega 14 KB só de
+   esquema de ferramenta por rodada. O aperto não vinha daqui. */
+export const ORCAMENTO_DE_CHARS = 3000;
 export const MAX_ITENS = 12;
 export const LIMIAR_DUPLICATA = 0.72;
 /** Abaixo disto, a memória não tem relação com a pergunta. */
@@ -120,6 +123,13 @@ export function selecionarMemorias(
 ): MemoriaSelecionada[] {
   const orcamento = opcoes.orcamento ?? ORCAMENTO_DE_CHARS;
   const maxItens = opcoes.maxItens ?? MAX_ITENS;
+  /*
+   * A consulta é expandida com termos relacionados antes de comparar.
+   *
+   * Só o lado da CONSULTA: expandir também as memórias infla o denominador do
+   * Dice e derruba todas as pontuações de uma vez.
+   */
+  const busca = expandirConsulta(consulta);
   const agora = Date.now();
 
   const vivas = memorias.filter((memoria) => {
@@ -132,7 +142,7 @@ export function selecionarMemorias(
   const restantes = vivas
     .filter((memoria) => !memoria.fixada)
     .map((memoria) => {
-      const { relevancia, total } = pontuar(memoria, consulta);
+      const { relevancia, total } = pontuar(memoria, busca);
       return { memoria, pontuacao: total, relevancia };
     })
     // Correção passa sem casar palavra: é o que o dono disse depois de o Jarvis

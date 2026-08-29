@@ -189,3 +189,52 @@ describe("achar parecida", () => {
     ).toBeNull();
   });
 });
+
+describe("achar o que ele guardou", () => {
+  const memoria = (id: number, conteudo: string, extra: Partial<Memoria> = {}) =>
+    ({
+      id,
+      conteudo,
+      chave: `k${id}`,
+      tipo: "fato",
+      origem: "explicita",
+      fixada: false,
+      esquecida: false,
+      versao: 1,
+      usos: 0,
+      expiraEm: null,
+      criadaEm: new Date(),
+      atualizadaEm: new Date(),
+      ...extra,
+    }) as Memoria;
+
+  const corpo = [
+    memoria(1, "O Senhor trabalha no Cursor para programar."),
+    memoria(2, "O Senhor mora em Marília, São Paulo."),
+    memoria(3, "O Senhor prefere café sem açúcar."),
+    memoria(4, "O Senhor é desenvolvedor Flutter."),
+  ];
+  const achou = (consulta: string, id: number) =>
+    selecionarMemorias(corpo, consulta).some((s) => s.memoria.id === id);
+
+  it("sinônimo: 'qual editor eu uso?' recupera o Cursor", () => {
+    // Zero tokens em comum com a memória — era o caso que falhava.
+    expect(achou("qual editor eu uso?", 1)).toBe(true);
+  });
+
+  it("'em que cidade eu moro?' continua achando Marília", () => {
+    expect(achou("em que cidade eu moro?", 2)).toBe(true);
+  });
+
+  it("'que linguagem eu programo?' acha o Flutter", () => {
+    expect(achou("que linguagem eu programo?", 4)).toBe(true);
+  });
+
+  it("REGRESSÃO: pergunta de disco não puxa a preferência de café", () => {
+    expect(achou("quanto sobrou de disco?", 3)).toBe(false);
+  });
+
+  it("o piso continua valendo — não é para trazer tudo", () => {
+    expect(selecionarMemorias(corpo, "quanto sobrou de disco?")).toHaveLength(0);
+  });
+});

@@ -24,12 +24,21 @@ export type TurnoPreparado = {
  */
 type FalaDaConversa = { role: "user" | "assistant"; content: string };
 
-/** Última fala do dono: é sobre ela que a relevância é medida. */
-function ultimaPerguntaDoDono(mensagens: FalaDaConversa[]): string {
-  for (let i = mensagens.length - 1; i >= 0; i -= 1) {
-    if (mensagens[i].role === "user") return mensagens[i].content;
-  }
-  return "";
+/**
+ * A consulta de memória são as últimas falas do dono, não só a derradeira.
+ *
+ * "E o outro?" ou "e amanhã?" não têm token útil nenhum: medida contra elas, a
+ * relevância dá zero e o bloco de memória volta vazio justamente no momento em
+ * que o contexto mais importa. As falas anteriores carregam o assunto.
+ */
+const FALAS_QUE_CONTAM = 3;
+
+function consultaDeMemoria(mensagens: FalaDaConversa[]): string {
+  return mensagens
+    .filter((m) => m.role === "user")
+    .slice(-FALAS_QUE_CONTAM)
+    .map((m) => m.content)
+    .join(" ");
 }
 
 export async function prepararTurno(mensagens: FalaDaConversa[]): Promise<TurnoPreparado> {
@@ -43,7 +52,7 @@ export async function prepararTurno(mensagens: FalaDaConversa[]): Promise<TurnoP
   try {
     const todas = await listarMemorias();
     if (todas.length > 0) {
-      const selecionadas = selecionarMemorias(todas, ultimaPerguntaDoDono(mensagens));
+      const selecionadas = selecionarMemorias(todas, consultaDeMemoria(mensagens));
       memorias = montarBlocoDeMemoria(selecionadas);
       usadas = selecionadas.map((item) => item.memoria.id);
     }
