@@ -7,6 +7,7 @@
 import { useState } from "react";
 import {
   AudioLines,
+  AudioWaveform,
   Ear,
   LayoutDashboard,
   MessageSquare,
@@ -30,7 +31,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH, openBoardWindow } from "@/const";
 
 function Ponte({ onLogout }: { onLogout: () => void }) {
-  const { voice, coreState, pergunta, pending } = useJarvisSession();
+  const { voice, coreState, pergunta, pending, aoVivo, alternarAoVivo } = useJarvisSession();
   const [conversaAberta, setConversaAberta] = useState(false);
   const [escolhendoVoz, setEscolhendoVoz] = useState(false);
 
@@ -67,6 +68,25 @@ function Ponte({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="comandos">
+        {/*
+          Conversa ao vivo: fala↔fala, sem TTS no meio. Fica primeiro porque é
+          o modo que o dono vai querer usar; os outros dois continuam ali para
+          quando a cota acabar ou ele preferir ditar.
+        */}
+        <button
+          type="button"
+          className={`aovivo ${aoVivo.ativo ? "ativo" : ""} ${aoVivo.conectando ? "conectando" : ""}`}
+          onClick={alternarAoVivo}
+          title={aoVivo.ativo ? "Encerrar a conversa ao vivo" : "Conversar ao vivo, por voz"}
+          aria-label="Conversa ao vivo"
+          aria-pressed={aoVivo.ativo}
+        >
+          <AudioWaveform size={14} />
+          {aoVivo.microfoneBloqueado ? <i className="ponto alerta" /> : null}
+        </button>
+
+        <span className="comandos-divisor" />
+
         <button
           type="button"
           className={voice.mode === "dictation" ? "ativo" : ""}

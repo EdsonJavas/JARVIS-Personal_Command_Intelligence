@@ -1648,3 +1648,30 @@ button.aviso-voz { cursor: pointer; }
   color: var(--muted);
 }
 .turn-texto hr { margin: 12px 0; border: 0; border-top: 1px solid var(--line); }
+
+/* --------------------------- botão de voz ao vivo --------------------------- */
+.comandos button.aovivo { position: relative; }
+.comandos button.aovivo.ativo {
+  color: var(--void);
+  background: var(--azul-claro);
+  box-shadow: 0 0 18px rgba(185, 228, 255, 0.5);
+}
+/* Pulsa enquanto o canal sobe: é o único momento em que ele demora e não fala. */
+.comandos button.aovivo.conectando { animation: aovivoConectando 1.1s var(--ease-out) infinite; }
+@keyframes aovivoConectando {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .comandos button.aovivo.conectando { animation: none; }
+}
+.comandos button.aovivo .ponto.alerta {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--alert);
+  box-shadow: 0 0 6px var(--alert);
+}
