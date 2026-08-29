@@ -12,6 +12,7 @@ import { aquecerVoz } from "../vozAquecimento";
 import { ligarEntregaDeIniciativas } from "../tempo/entrega";
 import { desligarServidoresMcp, ligarServidoresMcp } from "../mcp/arranque";
 import { serveStatic, setupVite } from "./vite";
+import { encerrarSessoesAoVivo, ligarVozAoVivo } from "../voz/rotaAoVivo";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -35,6 +36,8 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  // Voz ao vivo: WebSocket próprio, no seu caminho, sem tocar no HMR do Vite.
+  ligarVozAoVivo(server);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -97,6 +100,7 @@ async function startServer() {
 for (const sinal of ["SIGINT", "SIGTERM"] as const) {
   process.once(sinal, () => {
     cancelarTodasAsExecucoes("desligamento");
+    encerrarSessoesAoVivo();
     const mortos = matarArvoreDeProcessos();
     if (mortos > 0) console.log(`[Saída] ${mortos} processo(s) encerrado(s).`);
 

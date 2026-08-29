@@ -21,6 +21,7 @@ import { shouldSpeakChatReply } from "@/lib/chatResponsePolicy";
 import { lerFluxoSse } from "@/lib/sseCliente";
 import { criarFilaDeFala, type FilaDeFala } from "@/lib/filaDeFala";
 import { criarFalaEmFluxo, type FalaEmFluxo } from "@/lib/falaEmFluxo";
+import { useVozAoVivo } from "@/hooks/useVozAoVivo";
 import {
   PRIMEIRO_AVISO_MS,
   SEGUNDO_AVISO,
@@ -96,6 +97,9 @@ type JarvisSession = {
   coreState: CoreState;
   micLevelRef: React.RefObject<number>;
   voice: ReturnType<typeof useJarvisVoice>;
+  /** Conversa fala↔fala, sem TTS no meio. Coexiste com o modo de texto. */
+  aoVivo: ReturnType<typeof useVozAoVivo>;
+  alternarAoVivo: () => void;
 
   /** O que ele veio dizer por conta própria: lembretes, rotinas, vigias. */
   iniciativas: ReturnType<typeof useIniciativas>["iniciativas"];
@@ -223,7 +227,13 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
   const voice = useJarvisVoice({
     onTranscript: (texto) => handleTranscriptRef.current(texto),
   });
-  const micLevelRef = useMicLevel(voice.mode !== "off");
+  /*
+   * O nível do microfone tem duas fontes, e nunca as duas ao mesmo tempo: no
+   * modo ao vivo ele vem do RMS do worklet, escrito na mesma ref. Dois
+   * `getUserMedia` simultâneos degradam o cancelamento de eco.
+   */
+  const [modoAoVivo, setModoAoVivo] = useState(false);
+  const micLevelRef = useMicLevel(voice.mode !== "off" && !modoAoVivo);
 
   const vozRef = useRef(voice);
   useEffect(() => {
@@ -551,13 +561,49 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("beforeunload", aoSair);
   }, []);
 
-  const coreState: CoreState = pending
-    ? "thinking"
-    : voice.speaking
-      ? "speaking"
-      : voice.mode !== "off"
-        ? "listening"
-        : "idle";
+  const aoVivo = useVozAoVivo({
+    // As MESMAS refs da voz antiga: o núcleo e a onda continuam animando sem
+    // que nenhum componente de desenho precise saber que o modo mudou.
+    ondaRef: voice.speechWaveRef,
+    pulsoRef: voice.speechPulseRef,
+    micLevelRef,
+    aoTranscrever: (de, texto) => {
+      if (de === "jarvis") setRespostaParcial((atual) => (atual ?? "") + texto);
+      else setNarracao(texto);
+    },
+    aoErro: (mensagem) => setError({ message: mensagem, retryable: false }),
+  });
+
+  const alternarAoVivo = useCallback(() => {
+    if (aoVivo.ativo || aoVivo.conectando) {
+      aoVivo.parar();
+      setModoAoVivo(false);
+      return;
+    }
+    /*
+     * Ao entrar, nesta ordem. Deixar o reconhecimento do navegador ligado faz
+     * ele disputar o microfone E disparar `send()` com o que o dono acabou de
+     * dizer ao modo ao vivo — dois turnos para uma fala só.
+     */
+    cancelar();
+    voice.stopListening();
+    voice.stopSpeaking();
+    filaRef.current?.encerrar();
+    setModoAoVivo(true);
+    void aoVivo.iniciar();
+  }, [aoVivo, cancelar, voice]);
+
+  const coreState: CoreState = aoVivo.falando
+    ? "speaking"
+    : aoVivo.ativo
+      ? "listening"
+      : pending
+        ? "thinking"
+        : voice.speaking
+          ? "speaking"
+          : voice.mode !== "off"
+            ? "listening"
+            : "idle";
 
   const value = useMemo<JarvisSession>(
     () => ({
@@ -578,6 +624,8 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
       coreState,
       micLevelRef,
       voice,
+      aoVivo,
+      alternarAoVivo,
       iniciativas,
       dispensarIniciativa,
     }),
