@@ -270,6 +270,34 @@ export function responderPergunta(
     return { aceita: true };
   }
 
+  /*
+   * A DECISÃO MAIS IMPORTANTE DESTE MÓDULO, e ela vem ANTES de tudo o que
+   * autoriza.
+   *
+   * Numa máquina com microfone e alto-falante embutidos, o Jarvis fala "isso
+   * encerra o Chrome, confirma?" e o próprio reconhecedor transcreve a fala
+   * dele. A palavra "confirma" apareceria na transcrição e autorizaria a ação
+   * sozinha.
+   *
+   * Em confirmação, voz nunca autoriza: só clique. Voz ainda RECUSA — o ramo
+   * de cancelamento fica acima de propósito, porque recusar por engano é
+   * seguro e travar a execução esperando um clique não é.
+   *
+   * Isto ficava depois do ramo de `opcaoId`, e ali era tarde: uma resposta por
+   * voz que trouxesse um id de opção encerrava a pergunta e devolvia
+   * `aceita: true` sem nunca passar por aqui. A interface de hoje só manda
+   * texto, então não era alcançável por ela — mas a rota aceita, e o modo de
+   * voz ao vivo tornaria isso alcançável de verdade.
+   */
+  if (resposta.origem === "voz") {
+    const opcaoPedida = resposta.opcaoId
+      ? pergunta.opcoes.find((item) => item.id === resposta.opcaoId)
+      : undefined;
+    if (pergunta.tipo === "confirmacao" || opcaoPedida?.perigo) {
+      return { aceita: false, motivo: "voz_nao_autoriza" };
+    }
+  }
+
   if (resposta.opcaoId) {
     const opcao = pergunta.opcoes.find((item) => item.id === resposta.opcaoId);
     if (!opcao) return { aceita: false, motivo: "desconhecida" };
@@ -288,20 +316,7 @@ export function responderPergunta(
   const texto = String(resposta.texto ?? "").trim();
   if (!texto) return { aceita: false, motivo: "desconhecida" };
 
-  /**
-   * A DECISÃO MAIS IMPORTANTE DESTE MÓDULO.
-   *
-   * Numa máquina com microfone e alto-falante embutidos, sem cancelamento de
-   * eco no caminho da API de reconhecimento, o Jarvis fala "isso encerra o
-   * Chrome, confirma?" e o próprio reconhecedor transcreve a fala dele. A
-   * palavra "confirma" apareceria na transcrição e autorizaria a ação sozinha.
-   *
-   * Em confirmação, portanto, voz nunca autoriza: só clique. Voz ainda pode
-   * RECUSAR, porque recusar por engano é seguro.
-   */
-  if (pergunta.tipo === "confirmacao" && resposta.origem === "voz") {
-    return { aceita: false, motivo: "voz_nao_autoriza" };
-  }
+  // (a guarda de voz agora vive acima, antes de qualquer caminho que autorize)
 
   if (pergunta.tipo === "confirmacao" && !ehAfirmacaoExplicita(texto)) {
     encerrar(pergunta.id, { desfecho: "cancelada", texto }, "cancelada");
