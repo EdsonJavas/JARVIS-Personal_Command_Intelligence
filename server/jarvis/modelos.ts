@@ -35,13 +35,35 @@ const ARQUIVO = resolve(process.cwd(), PASTA_DADOS, "modelos-esgotados.json");
  * Do mais capaz para o mais simples. `gemini-3.6-flash` primeiro porque é o que
  * o dono vinha usando e o que melhor decide quais ferramentas chamar.
  */
-const PADRAO = [
+const ESCADA_RAPIDA = [
   "gemini-3.6-flash",
   "gemini-3.5-flash",
   "gemini-flash-latest",
   "gemini-3.1-flash-lite",
   "gemini-flash-lite-latest",
 ];
+
+/**
+ * A escada de quando a resposta EXIGE raciocínio.
+ *
+ * A lista de antes misturava duas coisas: preferência de qualidade e plano B
+ * de cota. Não havia um único Pro nela — o assistente nunca teve acesso ao
+ * melhor que a chave alcança.
+ *
+ * Degrada para a rápida no fim: ficar sem resposta é pior que responder raso.
+ * E os modelos Pro têm balde de cota PRÓPRIO, hoje intocado — o que soma
+ * requisições diárias em vez de dividir.
+ */
+const ESCADA_PROFUNDA = [
+  "gemini-3.1-pro-preview",
+  "gemini-pro-latest",
+  "gemini-3.7-flash",
+  ...ESCADA_RAPIDA,
+];
+
+export type NivelDeModelo = "rapido" | "profundo";
+
+const PADRAO = ESCADA_RAPIDA;
 
 type Registro = { dia: string; esgotados: string[] };
 
@@ -70,7 +92,7 @@ function gravar(registro: Registro): void {
 }
 
 /** A lista configurada, ou a padrão. Vírgula separa. */
-export function modelosDisponiveis(): string[] {
+export function modelosDisponiveis(nivel: NivelDeModelo = "rapido"): string[] {
   const doAmbiente = process.env.LLM_MODELS?.trim();
   if (doAmbiente) {
     const lista = doAmbiente.split(",").map((m) => m.trim()).filter(Boolean);
@@ -79,9 +101,11 @@ export function modelosDisponiveis(): string[] {
 
   // `LLM_MODEL` sozinho continua valendo: quem fixou um modelo não quer rodízio.
   const unico = process.env.LLM_MODEL?.trim();
-  if (unico) return [unico, ...PADRAO.filter((m) => m !== unico)];
+  if (unico) return [unico, ...ESCADA_RAPIDA.filter((m) => m !== unico)];
 
-  return PADRAO;
+  // Quem desligou o modo profundo volta ao comportamento de antes.
+  if (nivel === "profundo" && process.env.JARVIS_MODELO_PROFUNDO !== "0") return ESCADA_PROFUNDA;
+  return ESCADA_RAPIDA;
 }
 
 /**
@@ -91,15 +115,15 @@ export function modelosDisponiveis(): string[] {
  * e receber o 429 — que traz o tempo de espera — do que decidir aqui que não
  * vale tentar. A cota pode ter renovado no minuto anterior.
  */
-export function modeloAtual(): string {
-  const lista = modelosDisponiveis();
+export function modeloAtual(nivel: NivelDeModelo = "rapido"): string {
+  const lista = modelosDisponiveis(nivel);
   const { esgotados } = ler();
   return lista.find((modelo) => !esgotados.includes(modelo)) ?? lista[0];
 }
 
 /** O próximo depois deste, ou nulo quando a fila acabou. */
-export function proximoModelo(depoisDe: string): string | null {
-  const lista = modelosDisponiveis();
+export function proximoModelo(depoisDe: string, nivel: NivelDeModelo = "rapido"): string | null {
+  const lista = modelosDisponiveis(nivel);
   const { esgotados } = ler();
 
   const indice = lista.indexOf(depoisDe);

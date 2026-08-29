@@ -39,7 +39,14 @@ import {
   type RegistroDeTentativa,
 } from "./jarvis/falhas";
 import { falaDaResposta } from "./jarvis/fala";
-import { desmarcar, marcarEsgotado, modeloAtual, proximoModelo } from "./jarvis/modelos";
+import {
+  desmarcar,
+  marcarEsgotado,
+  modeloAtual,
+  proximoModelo,
+  type NivelDeModelo,
+} from "./jarvis/modelos";
+import { classificarDificuldade } from "./jarvis/dificuldade";
 import { classificarRecusa } from "./jarvis/recusa";
 import { registrarAcao } from "./acoes/repositorio";
 import { resumirSelecao, selecionarFerramentas } from "./jarvis/selecaoDeFerramentas";
@@ -63,6 +70,19 @@ const RESUMO_LARGO = 1200;
 const RESUMO_CURTO = 0;
 /** Quanto de original volta antes da chamada que escreve a resposta. */
 const TETO_NO_FECHAMENTO = 60_000;
+
+/**
+ * O provedor aceita `reasoning_effort`?
+ *
+ * O endpoint compatível do Gemini aceita, mas o projeto troca de provedor por
+ * variável de ambiente, e Groq ou OpenRouter podem devolver 400 por campo
+ * desconhecido. Uma recusa dessas desliga o parâmetro pelo resto do processo,
+ * em vez de derrubar todas as respostas seguintes.
+ */
+let razaoRecusada = false;
+function razaoLigada(): boolean {
+  return !razaoRecusada && process.env.JARVIS_RAZAO !== "0";
+}
 /** Quantos turnos atrás ainda mantêm um grupo externo disponível. */
 const TURNOS_QUE_LEMBRAM_O_GRUPO = 3;
 
@@ -287,6 +307,10 @@ async function callProvider(
     aoTexto?: (pedaco: string) => void;
     /** Teto de tokens da saída. Ausente = o da rodada de ferramenta. */
     tetoDeSaida?: number;
+    /** Qual escada de modelos usar ao trocar por cota. */
+    nivel?: NivelDeModelo;
+    /** Quanto o modelo deve pensar antes de responder. */
+    razao?: "low" | "medium" | "high";
     /** Interno: já dormiu uma vez nesta chamada. Impede laço de espera. */
     jaEsperou?: boolean;
   }
@@ -302,7 +326,7 @@ async function callProvider(
    * além de a resposta continuar vindo.
    */
   const tentarProximo = async (): Promise<ProviderMessage | null> => {
-    const seguinte = proximoModelo(model);
+    const seguinte = proximoModelo(model, opcoes.nivel);
     if (!seguinte) return null;
     console.warn(`[Modelo] trocando ${model} por ${seguinte}.`);
     return callProvider(endpoint, apiKey, seguinte, messages, opcoes);
@@ -330,7 +354,16 @@ async function callProvider(
          * ferramenta produz pouco texto e cabe folgada em 2048; a que ESCREVE
          * a resposta precisa de espaço de verdade.
          */
-        max_tokens: opcoes.tetoDeSaida ?? 2048,
+        max_tokens: opcoes.tetoDeSaida ?? TETO_FERRAMENTA,
+        /*
+         * Quanto pensar, dito de propósito.
+         *
+         * Sem isto vale o padrão do endpoint, que nos modelos 3.x é raciocínio
+         * dinâmico — e foi o que fez o `3.7-flash` medir 12,9 s numa saudação.
+         * Escolher uma ferramenta não precisa de reflexão; escrever a resposta
+         * precisa.
+         */
+        ...(razaoLigada() && opcoes.razao ? { reasoning_effort: opcoes.razao } : {}),
         ...(emFluxo ? { stream: true } : {}),
       }),
       signal: opcoes.sinal,
@@ -368,6 +401,17 @@ async function callProvider(
      * riscado como teto do DIA, e uma rajada de rodadas riscava a lista inteira
      * em segundos. Daí "reenviar" funcionar por um tempo e depois parar.
      */
+    /*
+     * 400 por causa do parâmetro de raciocínio: desliga e tenta de novo. É a
+     * diferença entre "trocar de provedor exige mexer no código" e "trocar de
+     * provedor simplesmente funciona".
+     */
+    if (response.status === 400 && razaoLigada() && /reasoning_effort/i.test(rawBody)) {
+      console.warn("[Jarvis] o provedor recusou reasoning_effort; seguindo sem ele.");
+      razaoRecusada = true;
+      return callProvider(endpoint, apiKey, model, messages, opcoes);
+    }
+
     const recusa = classificarRecusa(response.status, rawBody);
 
     if (recusa.tipo === "dia") {
@@ -652,10 +696,20 @@ export async function generateJarvisReply(
 
     let mensagem: ProviderMessage;
     try {
-      model = modeloAtual();
+      /*
+       * A rodada que ESCOLHE ferramenta usa sempre a escada rápida.
+       *
+       * Escolher qual ferramenta chamar não precisa do modelo profundo, e o
+       * profundo mede 12,9 s contra 5,7 s. Seis rodadas assim seriam 77
+       * segundos antes da primeira palavra — isso não parece mais inteligente,
+       * parece quebrado. O profundo é gasto na rodada que redige.
+       */
+      model = modeloAtual("rapido");
       mensagem = await callProvider(endpoint, apiKey, model, conversa, {
         sinal,
         comFerramentas: true,
+        nivel: "rapido",
+        razao: "low",
         permitidas: permitidasAgora(),
         /*
          * A resposta final nasce numa rodada SEM chamadas, e é a única que fica
@@ -901,7 +955,18 @@ export async function generateJarvisReply(
 
   let fechamento: ProviderMessage | null = null;
   try {
-    model = modeloAtual();
+    /*
+     * A ÚNICA chamada que pode ser lenta no turno, e é a que escreve o que o
+     * dono vai ler. O streaming a mascara: ele lê a resposta nascendo.
+     */
+    const dificuldade = classificarDificuldade({
+      pedido: pedidoDoDono,
+      acoesExecutadas: actions.length,
+      ferramentasUsadas,
+    });
+    console.info(`[Modelo] fechamento ${dificuldade.nivel} (${dificuldade.motivo})`);
+
+    model = modeloAtual(dificuldade.nivel);
     // A rodada que ESCREVE a resposta lê o que foi medido, não o resumo dele.
     restaurarParaFechamento(conversa);
     fechamento = await callProvider(
@@ -909,7 +974,14 @@ export async function generateJarvisReply(
       apiKey,
       model,
       [...conversa, { role: "system", content: notaDeFechamento(motivoDeParada) }],
-      { sinal, comFerramentas: false, tetoDeSaida: TETO_RESPOSTA }
+      {
+        sinal,
+        comFerramentas: false,
+        tetoDeSaida: TETO_RESPOSTA,
+        nivel: dificuldade.nivel,
+        razao: dificuldade.nivel === "profundo" ? "high" : "medium",
+        aoTexto: (pedaco) => emitir({ tipo: "resposta_parcial", texto: pedaco }),
+      }
     );
   } catch (error) {
     if (sinal.aborted) return fecharCancelado();
