@@ -1582,3 +1582,69 @@ button.aviso-voz { cursor: pointer; }
 }
 
 @media (max-width: 1180px) { .campo-voz { display: none; } }
+
+/* ==========================================================================
+   Markdown na bolha do assistente.
+
+   O texto na tela deixou de ser prosa curta: pode trazer tabela, lista, código
+   e caminho completo — é o que a voz NÃO diz. As regras abaixo dão forma a
+   isso sem transformar a conversa num documento: tudo continua compacto e no
+   mesmo azul do resto.
+   ========================================================================== */
+.turn-texto { color: var(--ink); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.turn-texto > :first-child { margin-top: 0; }
+.turn-texto > :last-child { margin-bottom: 0; }
+.turn-texto p { margin: 0 0 8px; white-space: pre-wrap; }
+.turn-texto h1, .turn-texto h2, .turn-texto h3, .turn-texto h4 {
+  margin: 14px 0 6px;
+  font: 600 13px var(--display);
+  letter-spacing: 0.01em;
+  color: var(--azul-claro);
+}
+/* `list-style` explícito: o reset do Tailwind zera o marcador, e uma lista sem
+   marcador vira parágrafo solto. */
+.turn-texto ul { margin: 0 0 8px; padding-left: 18px; list-style: disc; }
+.turn-texto ol { margin: 0 0 8px; padding-left: 20px; list-style: decimal; }
+.turn-texto li { margin: 2px 0; }
+.turn-texto li::marker { color: var(--azul); }
+.turn-texto strong { color: var(--azul-claro); font-weight: 600; }
+.turn-texto em { color: var(--ink); }
+.turn-texto a { color: var(--azul-claro); text-decoration: underline; text-underline-offset: 2px; }
+.turn-texto code {
+  padding: 1px 5px;
+  background: rgba(120, 200, 255, 0.09);
+  font: 12px var(--mono);
+  color: var(--azul-claro);
+  overflow-wrap: anywhere;
+}
+.turn-texto pre {
+  margin: 0 0 8px;
+  padding: 9px 11px;
+  background: rgba(120, 200, 255, 0.05);
+  border-left: 1px solid var(--line-strong);
+  overflow-x: auto;
+}
+.turn-texto pre code { padding: 0; background: none; font-size: 11.5px; line-height: 1.5; }
+/* A tabela rola dentro de si; a conversa nunca rola de lado. */
+.turn-texto .table-wrapper, .turn-texto figure { margin: 0 0 8px; overflow-x: auto; }
+.turn-texto table { border-collapse: collapse; width: 100%; font: 12px var(--mono); }
+.turn-texto th {
+  text-align: left;
+  padding: 4px 12px 5px 0;
+  font-weight: 500;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--azul);
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+.turn-texto td { padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.turn-texto tr:last-child td { border-bottom: 0; }
+.turn-texto blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--muted);
+}
+.turn-texto hr { margin: 12px 0; border: 0; border-top: 1px solid var(--line); }

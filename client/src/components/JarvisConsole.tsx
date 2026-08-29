@@ -8,6 +8,7 @@ import {
   Square,
   Terminal,
 } from "lucide-react";
+import { Streamdown } from "streamdown";
 import { shouldSubmitComposer } from "@/lib/chatComposer";
 import { useJarvisSession, type ConsoleError } from "@/contexts/JarvisSessionContext";
 
@@ -127,7 +128,18 @@ export function JarvisConsole() {
               </ul>
             ) : null}
 
-            <p>{message.content}</p>
+            {/*
+              A bolha do assistente renderiza markdown; a do dono, não.
+              Isto vem ANTES de o prompt liberar markdown: na ordem inversa, o
+              primeiro efeito visível seria asterisco cru na tela.
+            */}
+            {message.role === "assistant" ? (
+              <div className="turn-texto">
+                <Streamdown>{message.content}</Streamdown>
+              </div>
+            ) : (
+              <p>{message.content}</p>
+            )}
           </article>
         ))}
 
