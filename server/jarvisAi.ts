@@ -47,6 +47,7 @@ import {
   type NivelDeModelo,
 } from "./jarvis/modelos";
 import { classificarDificuldade } from "./jarvis/dificuldade";
+import { criarAquecedorDeFala } from "./voz/aquecerResposta";
 import { classificarRecusa } from "./jarvis/recusa";
 import { registrarAcao } from "./acoes/repositorio";
 import { resumirSelecao, selecionarFerramentas } from "./jarvis/selecaoDeFerramentas";
@@ -654,6 +655,12 @@ export async function generateJarvisReply(
     .flatMap((m) => (m as { acoes?: { name: string }[] }).acoes ?? [])
     .map((a) => a.name);
 
+  /*
+   * Sintetiza cada frase da resposta no instante em que ela fecha, antes de o
+   * cliente sequer receber o texto. Quando ele pedir a voz, já está no cache.
+   */
+  const aquecedor = criarAquecedorDeFala(opcoes.interativo !== false);
+
   // Uma vez por turno: sem isto ninguém consegue ver o que o filtro cortou.
   let jaLogou = false;
   const permitidasAgora = () => {
@@ -686,6 +693,7 @@ export async function generateJarvisReply(
 
     rodada += 1;
     emitir({ tipo: "pensando", rodada });
+    aquecedor.novaRodada();
 
     if (deveAvisar(estado, orcamento)) {
       conversa.push({
@@ -718,7 +726,10 @@ export async function generateJarvisReply(
          * resposta curta o provedor entrega tudo de uma vez e isto não custa
          * nada nem atrapalha.
          */
-        aoTexto: (pedaco) => emitir({ tipo: "resposta_parcial", texto: pedaco }),
+        aoTexto: (pedaco) => {
+          emitir({ tipo: "resposta_parcial", texto: pedaco });
+          aquecedor.receber(pedaco);
+        },
       });
     } catch (error) {
       if (sinal.aborted) return fecharCancelado();
@@ -751,7 +762,10 @@ export async function generateJarvisReply(
           sinal,
           comFerramentas: false,
           tetoDeSaida: TETO_RESPOSTA,
-          aoTexto: (pedaco) => emitir({ tipo: "resposta_parcial", texto: pedaco }),
+          aoTexto: (pedaco) => {
+          emitir({ tipo: "resposta_parcial", texto: pedaco });
+          aquecedor.receber(pedaco);
+        },
         }).catch(() => null);
         texto = segunda?.content?.trim();
       }
@@ -980,7 +994,10 @@ export async function generateJarvisReply(
         tetoDeSaida: TETO_RESPOSTA,
         nivel: dificuldade.nivel,
         razao: dificuldade.nivel === "profundo" ? "high" : "medium",
-        aoTexto: (pedaco) => emitir({ tipo: "resposta_parcial", texto: pedaco }),
+        aoTexto: (pedaco) => {
+          emitir({ tipo: "resposta_parcial", texto: pedaco });
+          aquecedor.receber(pedaco);
+        },
       }
     );
   } catch (error) {

@@ -1,4 +1,6 @@
-import { dividirResposta, prepararFala } from "@shared/fala";
+import { dividirResposta, prepararFala, separarFrases } from "@shared/fala";
+
+export { separarFrases };
 
 /**
  * Fala a resposta enquanto ela ainda está chegando.
@@ -20,37 +22,6 @@ import { dividirResposta, prepararFala } from "@shared/fala";
  *    em ponto seguido de espaço e de letra maiúscula, ou em fim de linha, e
  *    nunca em frase curta demais para ser uma frase.
  */
-
-const TAMANHO_MINIMO = 12;
-
-/** Quebra o texto em frases completas e devolve o que sobrou sem fechar. */
-export function separarFrases(texto: string): { prontas: string[]; resto: string } {
-  const prontas: string[] = [];
-  let resto = texto;
-
-  // Ponto/exclamação/interrogação seguidos de espaço e maiúscula (ou de quebra
-  // de linha) fecham uma frase. Reticências e fim de linha também.
-  const fronteira = /([.!?…]+)(\s+)(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ"“(])|([.!?…]+)?\n+/g;
-  // "Dr.", "Sr.", "Sra.", "Ex.": ponto depois de palavra curta com maiúscula
-  // é abreviação, não fim de frase.
-  const abreviacao = /(^|\s)[A-ZÁÉÍÓÚ][a-záéíóú]{0,2}$/;
-
-  let inicio = 0;
-  let casou: RegExpExecArray | null;
-  while ((casou = fronteira.exec(resto)) !== null) {
-    const fim = casou.index + (casou[1]?.length ?? casou[3]?.length ?? 0);
-    const frase = resto.slice(inicio, fim).trim();
-    if (casou[1] && abreviacao.test(resto.slice(inicio, casou.index))) continue;
-    if (frase.length >= TAMANHO_MINIMO) {
-      prontas.push(frase);
-      inicio = casou.index + casou[0].length;
-    }
-    // Curta demais: fica e se junta à próxima.
-  }
-
-  resto = resto.slice(inicio);
-  return { prontas, resto };
-}
 
 export type FalaEmFluxo = {
   /** Um pedaço do fluxo chegou. Devolve as frases que fecharam com ele. */
