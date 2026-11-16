@@ -1,16 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  Loader2,
-  RotateCcw,
-  Send,
-  ShieldAlert,
-  Square,
-  Terminal,
-} from "lucide-react";
+import { AlertTriangle, Loader2, RotateCcw, Send, Square, Terminal } from "lucide-react";
 import { Streamdown } from "streamdown";
 import { shouldSubmitComposer } from "@/lib/chatComposer";
 import { useJarvisSession, type ConsoleError } from "@/contexts/JarvisSessionContext";
+import { PerguntaCard } from "@/components/PerguntaCard";
 
 export function JarvisConsole() {
   const {
@@ -25,8 +18,8 @@ export function JarvisConsole() {
     respostaParcial,
     acoesEmCurso,
     pergunta,
-    responder,
     voice,
+    provedor,
   } = useJarvisSession();
 
   const [draft, setDraft] = useState("");
@@ -84,7 +77,13 @@ export function JarvisConsole() {
   return (
     <section className="console-painel" aria-label="Canal de texto">
       <header className="painel-topo">
-        <span>CANAL DE TEXTO</span>
+        <span>
+          CANAL DE TEXTO
+          {/* Quem respondeu por último: muda para Groq quando o Gemini esgota. */}
+          {provedor ? (
+            <em className={`painel-provedor ${provedor === "Gemini" ? "" : "reserva"}`}> · {provedor}</em>
+          ) : null}
+        </span>
         <div className="head-actions">
           {pending ? (
             <button type="button" onClick={cancelar} title="Interromper a execução">
@@ -177,51 +176,7 @@ export function JarvisConsole() {
         ) : null}
 
         {/* Pergunta aberta: a execução está parada esperando esta resposta. */}
-        {pergunta ? (
-          <div className={`pergunta-card nivel-${pergunta.nivel}`} role="alertdialog">
-            <div className="pergunta-topo">
-              {pergunta.nivel === "normal" ? (
-                <Terminal size={13} />
-              ) : (
-                <ShieldAlert size={13} />
-              )}
-              <span>
-                {pergunta.nivel === "critico"
-                  ? "AÇÃO CRÍTICA"
-                  : pergunta.nivel === "destrutivo"
-                    ? "AÇÃO DESTRUTIVA"
-                    : "PRECISO DE UMA DECISÃO"}
-              </span>
-            </div>
-
-            <p className="pergunta-texto">{pergunta.pergunta}</p>
-            {pergunta.impacto ? <p className="pergunta-impacto">{pergunta.impacto}</p> : null}
-            {pergunta.detalheTecnico ? (
-              <pre className="pergunta-tecnico">{pergunta.detalheTecnico}</pre>
-            ) : null}
-
-            <div className="pergunta-opcoes">
-              {pergunta.opcoes.map((opcao) => (
-                <button
-                  key={opcao.id}
-                  type="button"
-                  className={opcao.perigo ? "perigo" : ""}
-                  onClick={() => responder({ opcaoId: opcao.id, origem: "clique" })}
-                  title={opcao.detalhe}
-                >
-                  {opcao.rotulo}
-                  {opcao.detalhe ? <small>{opcao.detalhe}</small> : null}
-                </button>
-              ))}
-            </div>
-
-            {pergunta.tipo === "confirmacao" ? (
-              <p className="pergunta-nota">
-                Ações destrutivas só são autorizadas por clique — responder por voz não confirma.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
+        <PerguntaCard />
 
         {voice.interim ? <div className="console-interim">{voice.interim}</div> : null}
       </div>

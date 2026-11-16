@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { LOGIN_PATH } from "@/const";
+import { LOGIN_PATH, TITULOS } from "@/const";
 import type { Cartao, ItemDoCartao } from "@shared/painel";
 
 const POLL_CARTOES_MS = 3000;
@@ -181,6 +181,9 @@ type Filtro = "tudo" | "fixados" | "passos" | "alerta";
 /* ---------------------------------- a mesa ---------------------------------- */
 
 export default function Dashboard() {
+  useEffect(() => {
+    document.title = TITULOS.painel;
+  }, []);
   const { user, loading } = useAuth({ redirectOnUnauthenticated: true, redirectPath: LOGIN_PATH });
   const utils = trpc.useUtils();
   const confirmacao = useConfirmacao();

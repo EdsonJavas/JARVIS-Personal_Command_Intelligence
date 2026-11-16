@@ -92,19 +92,35 @@ function gravar(registro: Registro): void {
 }
 
 /** A lista configurada, ou a padrão. Vírgula separa. */
-export function modelosDisponiveis(nivel: NivelDeModelo = "rapido"): string[] {
-  const doAmbiente = process.env.LLM_MODELS?.trim();
+export function modelosDisponiveis(
+  nivel: NivelDeModelo = "rapido",
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
+  const doAmbiente = env.LLM_MODELS?.trim();
   if (doAmbiente) {
     const lista = doAmbiente.split(",").map((m) => m.trim()).filter(Boolean);
     if (lista.length > 0) return lista;
   }
 
   // `LLM_MODEL` sozinho continua valendo: quem fixou um modelo não quer rodízio.
-  const unico = process.env.LLM_MODEL?.trim();
+  const unico = env.LLM_MODEL?.trim();
   if (unico) return [unico, ...ESCADA_RAPIDA.filter((m) => m !== unico)];
 
+  return escadaDoGemini(nivel, env);
+}
+
+/**
+ * A escada do Gemini, sem o que o `.env` fixou para outro provedor.
+ *
+ * Quando o Gemini é reserva de um provedor personalizado, `LLM_MODEL` fala do
+ * personalizado — mandar aquele nome ao Google daria 404.
+ */
+export function escadaDoGemini(
+  nivel: NivelDeModelo = "rapido",
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
   // Quem desligou o modo profundo volta ao comportamento de antes.
-  if (nivel === "profundo" && process.env.JARVIS_MODELO_PROFUNDO !== "0") return ESCADA_PROFUNDA;
+  if (nivel === "profundo" && env.JARVIS_MODELO_PROFUNDO !== "0") return ESCADA_PROFUNDA;
   return ESCADA_RAPIDA;
 }
 
@@ -115,21 +131,38 @@ export function modelosDisponiveis(nivel: NivelDeModelo = "rapido"): string[] {
  * e receber o 429 — que traz o tempo de espera — do que decidir aqui que não
  * vale tentar. A cota pode ter renovado no minuto anterior.
  */
-export function modeloAtual(nivel: NivelDeModelo = "rapido"): string {
-  const lista = modelosDisponiveis(nivel);
+export function modeloAtual(
+  nivel: NivelDeModelo = "rapido",
+  lista: string[] = modelosDisponiveis(nivel)
+): string {
   const { esgotados } = ler();
   return lista.find((modelo) => !esgotados.includes(modelo)) ?? lista[0];
 }
 
-/** O próximo depois deste, ou nulo quando a fila acabou. */
-export function proximoModelo(depoisDe: string, nivel: NivelDeModelo = "rapido"): string | null {
-  const lista = modelosDisponiveis(nivel);
+/**
+ * O próximo depois deste, ou nulo quando a fila acabou.
+ *
+ * A fila é a do PROVEDOR em uso. Sem passar a lista, um modelo do Groq não
+ * seria achado na escada do Gemini e o "próximo" viraria um modelo do Google
+ * mandado ao endereço do Groq.
+ */
+export function proximoModelo(
+  depoisDe: string,
+  nivel: NivelDeModelo = "rapido",
+  lista: string[] = modelosDisponiveis(nivel)
+): string | null {
   const { esgotados } = ler();
 
   const indice = lista.indexOf(depoisDe);
   const restantes = indice >= 0 ? lista.slice(indice + 1) : lista;
 
   return restantes.find((modelo) => !esgotados.includes(modelo)) ?? null;
+}
+
+/** Algum modelo desta escada ainda tem cota hoje? */
+export function algumLivre(lista: string[]): boolean {
+  const { esgotados } = ler();
+  return lista.some((modelo) => !esgotados.includes(modelo));
 }
 
 export function marcarEsgotado(modelo: string): void {

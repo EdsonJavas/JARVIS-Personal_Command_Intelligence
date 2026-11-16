@@ -15,8 +15,8 @@
     "voz:instalar": "node scripts/instalar-voz.mjs",
     "atalho:instalar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/instalar-atalho.ps1",
     "atalho:remover": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/instalar-atalho.ps1 -Remover",
-    "atalho:iniciar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/jarvis-bandeja.ps1",
-    "google:configurar": "node scripts/configurar-google.mjs"
+    "google:configurar": "node scripts/configurar-google.mjs",
+    "ilha": "electron desktop/main.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -97,6 +97,7 @@
     "autoprefixer": "^10.4.20",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.31.4",
+    "electron": "^45.3.3",
     "esbuild": "^0.25.0",
     "postcss": "^8.4.47",
     "prettier": "^3.6.2",

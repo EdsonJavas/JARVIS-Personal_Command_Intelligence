@@ -30,6 +30,15 @@ process.env.DATABASE_URL = path.resolve(templateRoot, "data", "teste", "vitest.d
  */
 process.env.JARVIS_DATA_DIR = path.join("data", "teste");
 
+/*
+ * A reserva do Groq fica DESLIGADA nos testes, a não ser que o teste a ligue.
+ *
+ * Com a chave do .env carregada, todo teste de "cota esgotada" passaria a ser
+ * respondido pela reserva, e cada mock de fetch receberia chamadas num endereço
+ * que ele não espera. Quem testa a reserva liga a chave no próprio arquivo.
+ */
+if (!process.env.RUN_GEMINI_LIVE_TEST) delete process.env.GROQ_API_KEY;
+
 export default defineConfig({
   root: templateRoot,
   resolve: {

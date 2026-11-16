@@ -9,7 +9,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import { BOARD_PATH, LOGIN_PATH } from "./const";
+import Ilha from "./pages/Ilha";
+import { BOARD_PATH, ILHA_PATH, LOGIN_PATH } from "./const";
 
 function Router() {
   // Home e painel exigem sessão e redirecionam sozinhos para LOGIN_PATH.
@@ -19,6 +20,8 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path={BOARD_PATH} component={Dashboard} />
+      {/* A ilha pede a senha dentro dela; não redireciona para LOGIN_PATH. */}
+      <Route path={ILHA_PATH} component={Ilha} />
       <Route path={LOGIN_PATH} component={Login} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

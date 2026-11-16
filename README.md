@@ -48,12 +48,40 @@ configurado com Google Agenda e Gmail.
 
 ```bash
 npm install
-cp .env.example .env      # preencha GEMINI_API_KEY
+node node_modules/electron/install.js   # só se o npm bloquear scripts de instalação
+cp .env.example .env      # preencha APP_PASSWORD, JWT_SECRET e GEMINI_API_KEY
 npm run dev
 ```
 
 Sobe em `http://localhost:3000` e serve o frontend junto. O banco SQLite e as
 tabelas são criados sozinhos no primeiro boot.
+
+### A ilha
+
+```bash
+npm run ilha              # a ilha no alto da tela, agora
+npm run atalho:instalar   # e sempre: sobe junto com o Windows
+npm run atalho:remover    # desfaz
+```
+
+O Jarvis mora numa pílula preta no alto da **área de trabalho**, como a ilha do
+iPhone. Ela só existe com a mesa à vista: qualquer janela aberta, em qualquer
+monitor, a esconde; minimizou tudo, ela volta. Cresce sozinha para um lembrete
+que chegou e alarga enquanto ele fala.
+
+Um clique abre o **mini sistema**: o dia (resumo, agenda, e-mails que pedem
+resposta, o tempo), os lembretes e rotinas — marcados ali mesmo, sem gastar cota
+de IA — e a memória, com o que ele sabe sobre você para apagar ou desfazer. Esc,
+ou um clique fora, fecha. Conversar é na Ponte, a um botão do mini sistema.
+
+**Ctrl+Alt+J**: na área de trabalho, abre e fecha o mini sistema; com janelas
+abertas, traz a Ponte para a frente (ou a abre, se não estiver aberta).
+
+O ícone ao lado do relógio abre a Ponte e o painel, esconde a ilha ou sai, e a
+dica dele diz por que a ilha não está à vista. Se o servidor não estiver de pé,
+a ilha o sobe antes. Quem descobre se há janela aberta é
+`desktop/vigia-da-mesa.ps1` (`-Listar` mostra quais janelas estão contando);
+`JARVIS_IGNORAR_JANELAS=1` deixa a ilha sempre à vista, para desenvolver.
 
 ### Voz local, opcional mas recomendada
 
@@ -65,15 +93,12 @@ A voz principal são as neurais da Microsoft, alcançadas pelo servidor — sem
 navegador específico e sem cota. O Piper fica como reserva offline, e a queda é
 automática se a rede cair.
 
-### Atalho global e bandeja
+### Groq — a reserva quando o Gemini acaba
 
-```bash
-npm run atalho:instalar   # Ctrl+Alt+J chama de qualquer aplicativo
-npm run atalho:remover    # desfaz
-```
-
-Fica ao lado do relógio, sobe com o Windows, e abre a janela sem barra de
-endereço. Se o servidor não estiver de pé, ele sobe antes.
+Ponha `GROQ_API_KEY` no `.env` (chave gratuita em console.groq.com/keys). Quando
+a escada inteira do Gemini esgota no dia, ou ele cai, o Groq responde sozinho e a
+Ponte mostra "Groq" no canal de texto. Voz ao vivo, voz sintetizada e leitura de
+tela continuam só no Gemini — a chave do Groq nunca vai para o Google.
 
 ### Google — agenda e e-mail
 
@@ -87,19 +112,27 @@ npm run google:configurar  # guia passo a passo; confere o que já existe
 
 | Camada | Tecnologia |
 |---|---|
-| Interface | React 19 + Vite + wouter |
+| Interface | React 19 + Vite + wouter · a ilha em Electron (`desktop/`) |
 | API | tRPC sobre Express, e SSE para o fluxo de execução |
 | Banco | SQLite local (libSQL + Drizzle), com migrações versionadas |
-| Modelo | Endpoint compatível com OpenAI — padrão Gemini, trocável por `.env` |
+| Modelo | Endpoint compatível com OpenAI — Gemini, com o Groq de reserva |
 | Voz | Neural da Microsoft pelo servidor · Piper local · Gemini TTS |
 | Integrações | Ponte MCP (stdio) |
-| Testes | Vitest — 372 passando |
+| Testes | Vitest — 571 passando |
 
 ### Decisões que valem saber
 
 **O modelo troca sozinho quando a cota acaba.** O plano gratuito do Gemini dá 20
 requisições por dia POR MODELO. A conta tem vários, então esgotar um não cala o
-assistente: ele passa ao próximo. Vinte viram cerca de cem.
+assistente: ele passa ao próximo. Vinte viram cerca de cem. Quando a escada
+inteira acaba, a reserva do Groq assume, com a escada própria dela.
+
+**A ilha é Electron; a Ponte continua no navegador.** A ilha precisa de janela
+transparente, sem borda e que deixe o clique passar — nada disso existe numa
+janela de navegador. Ela NÃO fica sempre por cima: é da área de trabalho, e
+qualquer programa que abre já fica na frente dela antes mesmo de ela sumir. A Ponte abre no Chrome ou Edge em modo
+app porque lá o ditado e a escuta pela palavra "Jarvis" funcionam; no Electron,
+não. Com as duas abertas, só a ilha fala os lembretes.
 
 **O catálogo de ferramentas é filtrado por assunto.** Mandar as 64 a cada rodada
 custava 60 KB de esquema e levava uma saudação a 131 segundos. As nativas ficam

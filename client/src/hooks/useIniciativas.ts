@@ -20,7 +20,11 @@ const MAX_NA_TELA = 6;
 
 export type IniciativaNaTela = IniciativaJarvis & { lida: boolean };
 
-export function useIniciativas(aoChegar?: (iniciativa: IniciativaJarvis) => void) {
+export function useIniciativas(
+  aoChegar?: (iniciativa: IniciativaJarvis) => void,
+  /** A ilha se identifica: com ela aberta, só ela fala o aviso. */
+  origem: "ilha" | "tela" = "tela"
+) {
   const [iniciativas, setIniciativas] = useState<IniciativaNaTela[]>([]);
   const [conectado, setConectado] = useState(false);
 
@@ -41,7 +45,10 @@ export function useIniciativas(aoChegar?: (iniciativa: IniciativaJarvis) => void
 
       // EventSource aqui, e não fetch: é GET simples, e a reconexão automática
       // do navegador some quando a rota devolve erro — por isso a nossa.
-      fonte = new EventSource(CAMINHO_INICIATIVAS, { withCredentials: true });
+      fonte = new EventSource(
+        origem === "ilha" ? `${CAMINHO_INICIATIVAS}?origem=ilha` : CAMINHO_INICIATIVAS,
+        { withCredentials: true }
+      );
 
       fonte.onopen = () => {
         tentativa = 0;
@@ -78,7 +85,7 @@ export function useIniciativas(aoChegar?: (iniciativa: IniciativaJarvis) => void
       if (religar !== null) window.clearTimeout(religar);
       fonte?.close();
     };
-  }, []);
+  }, [origem]);
 
   const marcarLida = (compromissoId: number) =>
     setIniciativas((atual) =>

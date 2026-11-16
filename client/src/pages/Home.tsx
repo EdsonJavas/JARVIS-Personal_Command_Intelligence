@@ -4,7 +4,7 @@
 // alto como legenda, a onda vive pequena num canto e a execução sussurra no
 // rodapé. Tudo sobre o mesmo fundo, sem molduras. A conversa fica FECHADA por
 // padrão e só aparece quando chamada — é ela que roubava o espaço do principal.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AudioLines,
   AudioWaveform,
@@ -28,7 +28,7 @@ import { IniciativasDoJarvis } from "@/components/IniciativasDoJarvis";
 import { EscolherVoz } from "@/components/EscolherVoz";
 import { JarvisSessionProvider, useJarvisSession } from "@/contexts/JarvisSessionContext";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { LOGIN_PATH, openBoardWindow } from "@/const";
+import { LOGIN_PATH, TITULOS, openBoardWindow } from "@/const";
 
 function Ponte({ onLogout }: { onLogout: () => void }) {
   const { voice, coreState, pergunta, pending, aoVivo, alternarAoVivo } = useJarvisSession();
@@ -202,6 +202,9 @@ function Ponte({ onLogout }: { onLogout: () => void }) {
 }
 
 export default function Home() {
+  useEffect(() => {
+    document.title = TITULOS.ponte;
+  }, []);
   const { user, loading, logout } = useAuth({
     redirectOnUnauthenticated: true,
     redirectPath: LOGIN_PATH,

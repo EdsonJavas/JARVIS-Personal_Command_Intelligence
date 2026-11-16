@@ -12,6 +12,35 @@ Os pedidos são enviados somente pelo servidor, com o segredo `GEMINI_API_KEY` n
 
 O procedimento de chat exige sessão autenticada (senha local definida em `APP_PASSWORD`). Uma chamada sem cookie de sessão recebe `UNAUTHORIZED`, o que impede que terceiros gastem a cota da chave configurada no projeto.
 
+## Reserva automática: Groq
+
+Com `GROQ_API_KEY` no `.env`, o Groq entra como reserva. A ordem de tentativa é:
+
+1. o provedor personalizado de `LLM_BASE_URL`, se houver;
+2. o Gemini, com o rodízio de modelos de sempre;
+3. o Groq, com a escada própria: `openai/gpt-oss-120b`, `llama-3.3-70b-versatile`,
+   `qwen/qwen3.8-27b`, `openai/gpt-oss-20b` (troque com `GROQ_MODELS`).
+
+A troca para a reserva acontece quando a escada inteira do provedor anterior
+esgota no dia, quando ele pede pausa por minuto (com reserva não se espera),
+quando fica instável (5xx), quando recusa a chave ou o modelo, ou quando não
+responde. A resposta carrega quem respondeu, e a Ponte mostra o nome no canal
+de texto — em âmbar quando é a reserva.
+
+Três cuidados que a troca toma:
+
+- A assinatura de raciocínio que o Gemini 3 grava nas chamadas de ferramenta
+  (`extra_content`) é retirada antes de ir para outro provedor.
+- A recusa de `reasoning_effort` vale por endereço: o Groq recusar não desliga
+  o parâmetro para o Gemini.
+- Voz ao vivo, voz sintetizada e leitura de tela usam só a chave do Gemini
+  (`GEMINI_API_KEY`, ou `LLM_API_KEY` quando ela é do Google). A chave de outro
+  provedor nunca é mandada ao Google.
+
+O limite do Groq é escrito na frase do erro ("on requests per day (RPD)",
+"Please try again in 2.5s"), e o classificador de recusas entende os dois
+formatos.
+
 ## Troca de provedor compatível
 
 O frontend do Jarvis não depende do provedor de IA. Para trocar o canal server-side, configure `LLM_API_KEY`, `LLM_BASE_URL` e `LLM_MODEL`; o gateway também mantém compatibilidade com o segredo `GEMINI_API_KEY` já configurado.
@@ -39,3 +68,4 @@ Se a indisponibilidade for recorrente, use uma das configurações compatíveis 
 
 - [Compatibilidade OpenAI do Gemini](https://ai.google.dev/gemini-api/docs/openai)
 - [Catálogo de modelos Gemini](https://ai.google.dev/gemini-api/docs/models)
+- [Modelos do Groq com uso de ferramentas](https://console.groq.com/docs/tool-use)

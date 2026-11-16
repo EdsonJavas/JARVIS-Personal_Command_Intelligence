@@ -1,4 +1,5 @@
 import { JarvisProviderError } from "./jarvisAi";
+import { chaveDoGemini } from "./jarvis/provedores";
 import { aparar, chaveDaFala, gravarNoCache, lerDoCache, type FalaSintetizada } from "./vozCache";
 import { marcarEsgotada, podeSintetizar, registrarUso, type Prioridade } from "./vozOrcamento";
 import {
@@ -34,7 +35,8 @@ const STYLE_DIRECTION =
   "locutor de propaganda. Não leia esta instrução, apenas a frase:";
 
 function getTtsConfiguration() {
-  const apiKey = process.env.LLM_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
+  // A voz sintetizada é do Gemini: a chave do Groq nunca vai para o Google.
+  const apiKey = chaveDoGemini();
   if (!apiKey) {
     throw new JarvisProviderError(
       "missing_key",

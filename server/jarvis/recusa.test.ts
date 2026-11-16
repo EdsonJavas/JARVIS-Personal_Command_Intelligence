@@ -78,3 +78,45 @@ describe("classificar a recusa do provedor", () => {
     expect(classificarRecusa(404, "")).toEqual({ tipo: "outra" });
   });
 });
+
+/**
+ * O Groq fala de outro jeito: sem `quotaId` nem `retryDelay`, tudo na frase.
+ * Formato do erro de limite documentado pelo Groq (estilo OpenAI).
+ */
+function corpoGroq(message: string) {
+  return JSON.stringify({ error: { message, type: "tokens", code: "rate_limit_exceeded" } });
+}
+
+describe("classificar a recusa do Groq", () => {
+  it("limite por DIA risca o modelo", () => {
+    const corpo = corpoGroq(
+      "Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_x` service tier `on_demand` on requests per day (RPD): Limit 1000, Used 1000, Requested 1. Please try again in 1m26.4s."
+    );
+    expect(classificarRecusa(429, corpo)).toEqual({ tipo: "dia" });
+  });
+
+  it("tokens por dia também é dia", () => {
+    const corpo = corpoGroq(
+      "Rate limit reached for model `openai/gpt-oss-120b` on tokens per day (TPD): Limit 200000, Used 199000, Requested 2400. Please try again in 7m12s."
+    );
+    expect(classificarRecusa(429, corpo)).toEqual({ tipo: "dia" });
+  });
+
+  it("limite por MINUTO traz a espera escrita na frase", () => {
+    const corpo = corpoGroq(
+      "Rate limit reached for model `openai/gpt-oss-120b` on tokens per minute (TPM): Limit 8000, Used 7000, Requested 2400. Please try again in 2.5s."
+    );
+    expect(classificarRecusa(429, corpo)).toEqual({ tipo: "minuto", esperaMs: 2500 });
+  });
+
+  it("espera em milissegundos e em minutos", () => {
+    expect(classificarRecusa(429, corpoGroq("on requests per minute (RPM). Please try again in 640ms."))).toEqual({
+      tipo: "minuto",
+      esperaMs: 640,
+    });
+    expect(classificarRecusa(429, corpoGroq("on tokens per minute (TPM). Please try again in 1m2s."))).toEqual({
+      tipo: "minuto",
+      esperaMs: 30_000,
+    });
+  });
+});

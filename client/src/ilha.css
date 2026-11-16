@@ -1,0 +1,961 @@
+/* ==========================================================================
+   A ilha — o Jarvis morando no alto da tela.
+
+   Preto puro, como a ilha do iPhone: é o que a faz parecer parte da tela e não
+   uma janela por cima dela. O azul do Jarvis aparece só onde há informação —
+   o orbe, o estado, as barras. Num fundo de área de trabalho qualquer, um
+   contorno fino e uma sombra larga separam o preto do resto.
+   ========================================================================== */
+
+html.modo-ilha,
+html.modo-ilha body,
+html.modo-ilha #root {
+  background: transparent !important;
+  overflow: hidden;
+  min-width: 0;
+}
+
+html.modo-ilha body {
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.ilha-raiz {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 8px;
+  /* A janela é maior que a ilha; o resto deixa o clique passar. */
+  pointer-events: none;
+}
+
+.ilha {
+  --ilha-fundo: #000;
+  --ilha-fio: rgba(120, 200, 255, 0.14);
+  --ilha-texto: #eef1f5;
+  --ilha-apagado: #7d8896;
+
+  position: relative;
+  pointer-events: auto;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: var(--ilha-fundo);
+  color: var(--ilha-texto);
+  box-shadow:
+    0 0 0 1px var(--ilha-fio),
+    0 10px 30px -6px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 200ms ease;
+}
+
+.ilha.forma-expandida {
+  cursor: default;
+  user-select: text;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ilha:not(.forma-expandida):hover {
+    --ilha-fio: rgba(120, 200, 255, 0.3);
+  }
+}
+
+.ilha:focus-visible {
+  --ilha-fio: rgba(120, 200, 255, 0.6);
+}
+
+/* Largura fixa da forma de destino: o texto não reflui enquanto a casca anima,
+   e o excesso é cortado pelos dois lados por igual — a forma "revela". */
+.ilha-conteudo {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ilha-camada {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------- repouso */
+
+.ilha-repouso {
+  height: 36px;
+  display: grid;
+  grid-template-columns: 22px 1fr 22px;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.ilha-ponto {
+  justify-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--azul);
+  box-shadow: 0 0 8px rgba(120, 200, 255, 0.8);
+  /* Respira devagar: presente sem chamar atenção. Só opacidade, composição pura. */
+  animation: ilha-respira 4.2s ease-in-out infinite;
+}
+
+.ilha-ponto.apagado {
+  background: rgba(120, 200, 255, 0.3);
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes ilha-respira {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.ilha-marca {
+  justify-self: center;
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.34em;
+  /* A última letra também leva espaçamento à direita: compensa para centrar. */
+  padding-left: 0.34em;
+  color: var(--ilha-apagado);
+}
+
+.ilha-cadeado {
+  justify-self: center;
+  color: var(--ilha-apagado);
+}
+
+.ilha-contagem {
+  justify-self: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font: 600 10.5px var(--mono);
+  color: #04121c;
+  background: var(--azul);
+}
+
+.ilha-contagem.vazia {
+  background: none;
+}
+
+/* -------------------------------------------------------------- atividade */
+
+.ilha-atividade {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 9px;
+}
+
+.ilha-orbe {
+  flex-shrink: 0;
+  display: block;
+}
+
+/*
+ * Texto curto encosta à esquerda; texto longo mostra o FIM, que é o que acabou
+ * de chegar. A margem automática faz as duas coisas: com sobra de espaço ela
+ * empurra o texto para a esquerda; sem sobra ela vale zero, e o `flex-end`
+ * deixa o excesso escapar pelo começo.
+ */
+.ilha-linha {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  justify-content: flex-end;
+  overflow: hidden;
+  font: 500 12.5px/1.2 var(--display);
+  color: var(--ilha-texto);
+}
+
+.ilha-linha > span {
+  flex-shrink: 0;
+  margin-right: auto;
+  white-space: nowrap;
+}
+
+.ilha-linha.cortada {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px);
+  mask-image: linear-gradient(90deg, transparent, #000 32px);
+}
+
+.ilha-atividade.tipo-pensando .ilha-linha,
+.ilha-atividade.tipo-conectando .ilha-linha {
+  color: var(--azul-claro);
+}
+
+.ilha-atividade.tipo-ouvindo .ilha-linha {
+  color: var(--ilha-apagado);
+}
+
+.ilha-barras {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 16px;
+  padding: 0 2px;
+}
+
+.ilha-barras > span {
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--azul);
+  transform: scaleY(0.15);
+  will-change: transform;
+}
+
+/* ------------------------------------------------------------------ aviso */
+
+.ilha-aviso {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 10px 11px 11px;
+}
+
+.ilha-aviso-icone {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--azul);
+  background: rgba(120, 200, 255, 0.12);
+}
+
+.ilha-aviso.tipo-vigia .ilha-aviso-icone,
+.ilha-aviso.tipo-erro .ilha-aviso-icone {
+  color: #ffb4ab;
+  background: rgba(255, 90, 77, 0.14);
+}
+
+.ilha-aviso header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ilha-aviso header b {
+  font: 500 10px var(--mono);
+  letter-spacing: 0.22em;
+  color: var(--azul);
+}
+
+.ilha-aviso.tipo-vigia header b,
+.ilha-aviso.tipo-erro header b {
+  color: #ffb4ab;
+}
+
+.ilha-aviso header em {
+  font: 10px var(--mono);
+  font-style: normal;
+  color: var(--ilha-apagado);
+}
+
+.ilha-aviso p {
+  margin: 3px 0 0;
+  font: 500 13px/1.4 var(--display);
+  color: var(--ilha-texto);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- botões */
+
+.ilha-botao {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--ilha-apagado);
+  background: transparent;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.ilha-botao.pequeno {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ilha-botao.desligado {
+  color: #4b5562;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ilha-botao:hover {
+    color: var(--azul-claro);
+    background: rgba(120, 200, 255, 0.1);
+  }
+}
+
+.ilha-botao:active {
+  transform: scale(0.94);
+}
+
+/* ------------------------------------------------------------ fora da mesa */
+
+/*
+ * Abriu uma janela: a ilha sai de cena antes de o app de mesa esconder a
+ * janela dela. Saída rápida — quem abriu um programa quer o programa.
+ */
+.ilha-raiz {
+  transition:
+    opacity 160ms ease,
+    transform 200ms var(--ease-out);
+}
+
+.ilha-raiz.fora-da-mesa {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+}
+
+.ilha-raiz.fora-da-mesa .ilha {
+  pointer-events: none;
+}
+
+.ilha-acoes {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+
+/* ------------------------------------------------------------ mini sistema */
+
+.mini {
+  height: 480px;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 0;
+}
+
+.mini-topo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 2px 0 4px;
+}
+
+.mini-saudacao {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mini-saudacao b {
+  font: 600 16px/1.2 var(--display);
+  letter-spacing: -0.01em;
+  color: var(--ilha-texto);
+}
+
+.mini-saudacao span {
+  font: 11px var(--mono);
+  color: var(--ilha-apagado);
+}
+
+/*
+ * Abas no estilo do controle segmentado do iOS: um trilho, e uma marca que
+ * desliza sob a aba ativa. Só transform: troca de aba é coisa de muitas vezes
+ * por dia, e precisa ser imediata.
+ */
+.mini-abas {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 14px 2px 0;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mini-abas-marca {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 3);
+  border-radius: 9px;
+  background: rgba(120, 200, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(120, 200, 255, 0.22);
+  transition: transform 200ms var(--ease-out);
+}
+
+.mini-abas button {
+  position: relative;
+  height: 28px;
+  border-radius: 9px;
+  background: none;
+  font: 600 12.5px var(--display);
+  color: var(--ilha-apagado);
+  transition: color 150ms ease;
+}
+
+.mini-abas button.ativa {
+  color: var(--azul-claro);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mini-abas button:not(.ativa):hover {
+    color: var(--ilha-texto);
+  }
+}
+
+.mini-corpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 12px -6px 0;
+  padding: 0 8px 14px;
+  user-select: text;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 200, 255, 0.25) transparent;
+}
+
+.mini-cartao {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.mini-cartao h3,
+.lembrete-grupo h3 {
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 10px var(--mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--azul);
+}
+
+.mini-subtitulo {
+  margin-top: 14px !important;
+}
+
+.mini-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mini-lista li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  min-width: 0;
+}
+
+.mini-lista li + li {
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.mini-lista li > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mini-lista b {
+  font: 500 13px/1.35 var(--display);
+  color: var(--ilha-texto);
+  overflow-wrap: anywhere;
+}
+
+.mini-lista small {
+  font: 11px var(--mono);
+  color: var(--ilha-apagado);
+}
+
+.mini-lista time {
+  flex-shrink: 0;
+  width: 42px;
+  font: 500 12px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--azul-claro);
+}
+
+.mini-lista.compacta li {
+  padding: 5px 0;
+}
+
+.mini-vazio {
+  margin: 2px 0;
+  font: 12.5px/1.5 var(--display);
+  color: var(--ilha-apagado);
+}
+
+.mini-vazio code {
+  font: 11.5px var(--mono);
+  color: var(--azul-claro);
+}
+
+.mini-nota {
+  margin-top: 10px;
+}
+
+.mini-carregando {
+  margin: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 12.5px var(--display);
+  color: var(--ilha-apagado);
+}
+
+.mini-texto-botao {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: none;
+  font: 500 11.5px var(--display);
+  color: var(--ilha-apagado);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mini-texto-botao:hover {
+    color: var(--azul-claro);
+    background: rgba(120, 200, 255, 0.08);
+  }
+}
+
+.mini-confirmar {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font: 600 11.5px var(--display);
+  color: #fff;
+  background: #c8463c;
+  transition: transform 120ms var(--ease-out);
+}
+
+.mini-confirmar:active {
+  transform: scale(0.95);
+}
+
+/* ------------------------------------------------------------------- hoje */
+
+.hoje-resumo {
+  margin: 2px 4px 14px;
+  font: 500 15px/1.5 var(--display);
+  color: var(--ilha-texto);
+  text-wrap: pretty;
+}
+
+.hoje-grade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 10px;
+  align-items: start;
+}
+
+.hoje-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clima-agora {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.clima-agora b {
+  font: 300 34px/1 var(--display);
+  color: var(--ilha-texto);
+}
+
+.clima-agora span {
+  font: 12.5px var(--display);
+  color: var(--ilha-texto);
+  text-transform: lowercase;
+}
+
+.clima small {
+  display: block;
+  margin-top: 6px;
+  font: 11px var(--mono);
+  color: var(--ilha-apagado);
+}
+
+.clima .clima-chuva {
+  color: var(--azul-claro);
+}
+
+/* -------------------------------------------------------------- lembretes */
+
+.lembrete-novo {
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lembrete-modo {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.lembrete-modo button {
+  padding: 3px 12px;
+  border-radius: 7px;
+  background: none;
+  font: 600 11.5px var(--display);
+  color: var(--ilha-apagado);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.lembrete-modo button.ativo {
+  color: var(--azul-claro);
+  background: rgba(120, 200, 255, 0.16);
+}
+
+.lembrete-campos {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.lembrete-campos input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 11px;
+  outline: none !important;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(120, 200, 255, 0.1);
+  color: var(--ilha-texto);
+  font: 500 13px var(--display);
+  user-select: text;
+  transition: box-shadow 150ms ease;
+  color-scheme: dark;
+}
+
+.lembrete-campos input:focus {
+  box-shadow: inset 0 0 0 1px rgba(120, 200, 255, 0.4);
+}
+
+.lembrete-campos input::placeholder {
+  color: #59636f;
+}
+
+.lembrete-campos input.curto {
+  flex: 0 0 150px;
+}
+
+.lembrete-campos input.hora {
+  flex: 0 0 104px;
+  font: 500 13px var(--mono);
+}
+
+.lembrete-dica {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  font: 11.5px var(--display);
+  color: var(--ilha-apagado);
+}
+
+.lembrete-dica .certo {
+  color: var(--azul-claro);
+  font-weight: 600;
+}
+
+.lembrete-dica .errado {
+  color: #ffb4ab;
+}
+
+.lembrete-dias {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lembrete-dias button {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 600 10.5px var(--display);
+  color: var(--ilha-apagado);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.lembrete-dias button.ativo {
+  color: #04121c;
+  background: var(--azul);
+}
+
+.lembrete-dias em {
+  margin-left: 8px;
+  font-style: normal;
+  color: var(--azul-claro);
+}
+
+.lembrete-listas {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 4px;
+}
+
+/* ---------------------------------------------------------------- memória */
+
+.memoria-busca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--ilha-apagado);
+}
+
+.memoria-busca:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(120, 200, 255, 0.3);
+}
+
+.memoria-busca input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none !important;
+  background: none;
+  color: var(--ilha-texto);
+  font: 500 13px var(--display);
+  user-select: text;
+}
+
+.memoria-busca input::placeholder {
+  color: #59636f;
+}
+
+.memoria-busca span {
+  font: 11px var(--mono);
+}
+
+.memoria-desfazer {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 6px 12px;
+  border-radius: 12px;
+  background: rgba(120, 200, 255, 0.1);
+  font: 500 12.5px var(--display);
+  color: var(--ilha-texto);
+}
+
+.memoria-desfazer button {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--azul);
+  color: #04121c;
+  font: 600 11.5px var(--display);
+}
+
+.memoria-lista {
+  margin-top: 8px;
+  padding: 0 4px;
+}
+
+.memoria-tipo {
+  flex-shrink: 0;
+  width: 82px;
+  font: 500 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ilha-apagado);
+}
+
+.memoria-tipo.tipo-preferencia {
+  color: var(--azul-claro);
+}
+
+.memoria-tipo.tipo-correcao {
+  color: #f4c97a;
+}
+
+.memoria-fixa {
+  display: inline;
+  margin-right: 5px;
+  vertical-align: -1px;
+  color: var(--azul);
+}
+
+.memoria-esquecidas {
+  margin-top: 10px;
+  padding: 0 4px;
+}
+
+.memoria-esquecidas .girado {
+  transform: rotate(90deg);
+}
+
+.memoria-esquecidas svg {
+  transition: transform 150ms var(--ease-out);
+}
+
+.mini-lista li.apagada b {
+  color: var(--ilha-apagado);
+  text-decoration: line-through;
+  text-decoration-color: rgba(125, 136, 150, 0.5);
+}
+
+/* ---------------------------------------------------------------- composer */
+
+.ilha-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 21px;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(120, 200, 255, 0.08);
+  transition: box-shadow 150ms ease;
+}
+
+.ilha-composer:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(120, 200, 255, 0.3);
+}
+
+.ilha-composer input {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  border: 0;
+  outline: none !important;
+  background: none;
+  color: var(--ilha-texto);
+  font: 500 13.5px/1.45 var(--display);
+  padding: 6px 4px 6px 10px;
+  user-select: text;
+}
+
+.ilha-composer input::placeholder {
+  color: #59636f;
+}
+
+.ilha-enviar {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: #04121c;
+  background: var(--azul);
+  transition:
+    opacity 160ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.ilha-enviar.largo {
+  width: auto;
+  padding: 0 16px;
+  font: 600 12.5px var(--display);
+}
+
+.ilha-enviar:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.ilha-enviar:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/* ------------------------------------------------------------------ entrar */
+
+.ilha-entrar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 12px 12px;
+}
+
+.ilha-entrar header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  color: var(--azul);
+}
+
+.ilha-entrar header b {
+  font: 600 13px var(--display);
+  color: var(--ilha-texto);
+}
+
+.ilha-entrar > p {
+  margin: 0;
+  padding: 0 4px;
+  font: 12.5px/1.5 var(--display);
+  color: var(--ilha-apagado);
+}
+
+.ilha-erro-linha {
+  margin: 0;
+  padding: 0 4px;
+  font: 12px var(--display);
+  color: #ffb4ab;
+}
+
+/* ------------------------------------------------------------ movimento */
+
+@media (prefers-reduced-motion: reduce) {
+  .ilha-ponto {
+    animation: none;
+  }
+  .ilha-raiz.fora-da-mesa {
+    transform: none;
+  }
+}

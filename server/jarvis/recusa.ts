@@ -49,6 +49,24 @@ function lerDuracao(texto: unknown): number | null {
  * `retryDelay`. O endpoint compatível às vezes embrulha tudo num array. Em vez
  * de codificar cada caminho, o que interessa é coletado de qualquer profundidade.
  */
+/**
+ * "Please try again in 1m26.4s" — o jeito do Groq de pedir espera.
+ * Aceita horas, minutos, segundos e milissegundos, em qualquer combinação.
+ */
+function lerEsperaDaFrase(corpo: string): number | null {
+  const casou = /try again in\s+([\d.hms]+)/i.exec(corpo);
+  if (!casou) return null;
+  let ms = 0;
+  let achou = false;
+  for (const [, numero, unidade] of casou[1].matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)) {
+    achou = true;
+    const valor = Number(numero);
+    ms +=
+      unidade === "ms" ? valor : unidade === "s" ? valor * 1000 : unidade === "m" ? valor * 60_000 : valor * 3_600_000;
+  }
+  return achou ? Math.round(ms) : null;
+}
+
 function coletar(no: unknown, ids: string[], esperas: number[], fundo = 0): void {
   if (fundo > 8 || no === null || typeof no !== "object") return;
 
@@ -84,9 +102,16 @@ export function classificarRecusa(status: number, corpo: string): Recusa {
   // esperar um minuto não devolve a cota do dia.
   if (ids.some((id) => /PerDay/i.test(id))) return { tipo: "dia" };
 
+  // O Groq não manda `quotaId`: o teto vem escrito na frase do erro, com a
+  // sigla — RPD e TPD são do dia; RPM e TPM, do minuto.
+  if (/\bper day\b|\((?:RPD|TPD)\)/i.test(corpo)) return { tipo: "dia" };
+
   // Sem id nenhum, a escolha certa é a que erra para o lado recuperável: um
   // 429 mudo riscado como "dia" some por até 24 horas; tratado como "minuto",
   // custa no máximo uma espera curta.
-  const esperaMs = Math.min(ESPERA_MAXIMA_MS, esperas[0] ?? ESPERA_PADRAO_MS);
+  const esperaMs = Math.min(
+    ESPERA_MAXIMA_MS,
+    esperas[0] ?? lerEsperaDaFrase(corpo) ?? ESPERA_PADRAO_MS
+  );
   return { tipo: "minuto", esperaMs };
 }

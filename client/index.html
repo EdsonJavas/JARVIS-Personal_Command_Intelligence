@@ -1,6 +1,12 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
+    <!-- A ilha roda numa janela transparente. Marca o documento ANTES do CSS
+         carregar: o fundo escuro do resto do app pintaria um retângulo preto
+         no alto da tela até o React montar. -->
+    <script>
+      if (location.pathname.indexOf("/ilha") === 0) document.documentElement.className += " modo-ilha";
+    </script>
     <!-- O .ico multi-tamanho vem PRIMEIRO: e o que a barra de tarefas e a aba
          usam nitido. O SVG fica para quem prefere vetor; o manifesto da o PNG
          grande para a janela em modo app. -->

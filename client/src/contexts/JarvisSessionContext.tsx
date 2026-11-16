@@ -93,6 +93,8 @@ type JarvisSession = {
 
   lastLatency: number | null;
   model: string | null;
+  /** Quem respondeu por último: "Gemini", ou "Groq" quando a reserva assumiu. */
+  provedor: string | null;
 
   coreState: CoreState;
   micLevelRef: React.RefObject<number>;
@@ -147,7 +149,14 @@ function descreverErro(
   return { message: mensagem, retryable: recuperavel };
 }
 
-export function JarvisSessionProvider({ children }: { children: ReactNode }) {
+export function JarvisSessionProvider({
+  children,
+  origem = "tela",
+}: {
+  children: ReactNode;
+  /** Quem está abrindo a sessão. A ilha é a voz dos avisos quando está aberta. */
+  origem?: "ilha" | "tela";
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   /*
@@ -172,6 +181,7 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<ConsoleError | null>(null);
   const [latencias, setLatencias] = useState<number[]>([]);
   const [model, setModel] = useState<string | null>(null);
+  const [provedor, setProvedor] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [narracao, setNarracao] = useState<string | null>(null);
   const [respostaParcial, setRespostaParcial] = useState<string | null>(null);
@@ -272,8 +282,11 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
    * lembrete que ele prometeu dar.
    */
   const { iniciativas, dispensar: dispensarIniciativa } = useIniciativas((iniciativa) => {
+    // `falar: false` quer dizer que a ilha está aberta e já vai falar este
+    // aviso. Aqui ele só aparece, para não sair duas vezes no alto-falante.
+    if (iniciativa.falar === false) return;
     filaRef.current?.perguntar(iniciativa.texto);
-  });
+  }, origem);
 
   const encerrarExecucao = useCallback(() => {
     cancelarAvisos();
@@ -360,6 +373,8 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
           break;
 
         case "resposta": {
+          setModel(evento.modelo);
+          if (evento.provedor) setProvedor(evento.provedor);
           setLatencias((atual) =>
             [...atual, Math.round(performance.now() - inicioRef.current)].slice(-MAX_LATENCIAS)
           );
@@ -621,6 +636,7 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
       responder,
       lastLatency: latencias.length > 0 ? latencias[latencias.length - 1] : null,
       model,
+      provedor,
       coreState,
       micLevelRef,
       voice,
@@ -644,6 +660,7 @@ export function JarvisSessionProvider({ children }: { children: ReactNode }) {
       responder,
       latencias,
       model,
+      provedor,
       coreState,
       micLevelRef,
       voice,

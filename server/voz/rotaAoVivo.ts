@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import { CAMINHO_VOZ_AO_VIVO } from "@shared/vozAoVivo";
 import { authenticateRequest } from "../auth";
+import { chaveDoGemini } from "../jarvis/provedores";
 import { abrirSessaoAoVivo, type SessaoAoVivo } from "./sessaoAoVivo";
 
 /**
@@ -53,7 +54,8 @@ export function ligarVozAoVivo(server: Server): void {
 
     if (!origemConfiavel(req)) return recusar(socket, 403, "Forbidden");
 
-    const chave = process.env.LLM_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
+    // A conversa ao vivo é do Gemini: a chave do Groq nunca vai para o Google.
+    const chave = chaveDoGemini();
     if (!chave) return recusar(socket, 503, "Service Unavailable");
 
     /*

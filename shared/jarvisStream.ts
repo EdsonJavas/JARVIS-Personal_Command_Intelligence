@@ -127,6 +127,8 @@ export type EventoJarvis =
       /** Enxugado, para a síntese de voz. */
       fala: string;
       modelo: string;
+      /** Quem respondeu de fato — muda quando o Gemini esgota e o Groq assume. */
+      provedor?: string;
       motivoDeParada: MotivoDeParada;
       acoes: AcaoJarvis[];
     }
@@ -205,6 +207,11 @@ export type IniciativaJarvis = {
   em: number;
   /** Só nos vigias: o valor medido que provocou o aviso. */
   valor?: number;
+  /**
+   * Esta tela deve falar o aviso? Ausente conta como sim. Com a ilha aberta, só
+   * ela fala; as outras mostram o cartão calado. Ver server/tempo/quemFala.ts.
+   */
+  falar?: boolean;
 };
 
 export const CAMINHO_INICIATIVAS = "/api/jarvis/iniciativas";

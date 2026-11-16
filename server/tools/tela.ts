@@ -1,4 +1,5 @@
 import { modeloAtual } from "../jarvis/modelos";
+import { provedoresConfigurados } from "../jarvis/provedores";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AvaliacaoDeRisco, ToolDefinition } from "./registry";
@@ -61,21 +62,28 @@ Write-Output "$($bmp.Width)"
   return destino;
 }
 
-/** Configuração do provedor de visão. Reaproveita a mesma chave do chat. */
+/**
+ * Configuração do provedor de visão.
+ *
+ * Nunca o Groq: a escada dele é de modelos que chamam ferramenta, não de
+ * modelos que enxergam. A visão fica com o Gemini, ou com o provedor
+ * personalizado do LLM_BASE_URL, como antes da reserva existir.
+ */
 function configuracao() {
-  const apiKey = process.env.LLM_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) throw new JarvisProviderError("missing_key", "A chave de IA não está configurada.");
-
-  const base = (
-    process.env.LLM_BASE_URL?.trim() || "https://generativelanguage.googleapis.com/v1beta/openai/"
-  ).replace(/\/+$/, "");
+  const provedor = provedoresConfigurados().find((p) => p.id !== "groq");
+  if (!provedor) {
+    throw new JarvisProviderError(
+      "missing_key",
+      "Ler a tela precisa da chave do Gemini (GEMINI_API_KEY) no .env."
+    );
+  }
 
   return {
-    apiKey,
-    url: base.endsWith("/chat/completions") ? base : `${base}/chat/completions`,
+    apiKey: provedor.apiKey,
+    url: provedor.endpoint,
     // Do rodízio, como o chat: um modelo fixo aqui gastava a cota do primeiro
     // da lista mesmo quando ele já estava esgotado.
-    model: modeloAtual(),
+    model: modeloAtual("rapido", provedor.modelos("rapido")),
   };
 }
 

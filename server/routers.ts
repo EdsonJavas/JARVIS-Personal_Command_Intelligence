@@ -21,7 +21,13 @@ import { saldo as saldoDeVoz } from "./vozOrcamento";
 import { servidoresConectados } from "./mcp/ponte";
 import { motivoDeAusencia } from "./mcp/configuracao";
 import { limpar as limparConversa, recentes as conversaRecente } from "./conversa/repositorio";
-import { cancelarCompromisso, listarCompromissos } from "./tempo/compromissos";
+import {
+  cancelarCompromisso,
+  criarLembrete,
+  criarRotina,
+  listarCompromissos,
+} from "./tempo/compromissos";
+import { descreverQuando, interpretarQuando } from "./tempo/quando";
 import { responderPergunta } from "./interacao/perguntas";
 import { cancelar, execucaoAtivaDe } from "./execucoes";
 import { TRPCError } from "@trpc/server";
@@ -198,6 +204,48 @@ export const appRouter = router({
     cancelar: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => ({ cancelado: await cancelarCompromisso(input.id) })),
+
+    /*
+     * Marcar pelo mini sistema da ilha, SEM o modelo. "Amanhã às 9h" é conta
+     * de relógio; gastar cota nisso seria desperdiçar o recurso mais escasso.
+     * O interpretador é o mesmo que a ferramenta do modelo usa.
+     */
+
+    /** O que a tela mostra enquanto o dono escreve o "quando". */
+    interpretar: protectedProcedure
+      .input(z.object({ quando: z.string().max(120) }))
+      .query(({ input }) => {
+        const agora = new Date();
+        const lido = interpretarQuando(input.quando, agora);
+        if (!lido.ok) return { ok: false as const, motivo: lido.motivo };
+        return {
+          ok: true as const,
+          iso: lido.quando.toISOString(),
+          descricao: descreverQuando(lido.quando, agora),
+        };
+      }),
+
+    criarLembrete: protectedProcedure
+      .input(z.object({ texto: z.string().trim().min(1).max(300), quando: z.string().trim().min(1).max(120) }))
+      .mutation(async ({ input }) => {
+        const resultado = await criarLembrete(input);
+        return resultado.ok ? { ok: true as const, id: resultado.compromisso.id } : resultado;
+      }),
+
+    criarRotina: protectedProcedure
+      .input(
+        z.object({
+          texto: z.string().trim().min(1).max(300),
+          /** Minutos desde a meia-noite. */
+          horaDoDia: z.number().int().min(0).max(24 * 60 - 1),
+          /** Domingo = 0. Vazio = todo dia. */
+          diasDaSemana: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const resultado = await criarRotina(input);
+        return resultado.ok ? { ok: true as const, id: resultado.compromisso.id } : resultado;
+      }),
   }),
 
   jarvis: router({

@@ -428,6 +428,10 @@ input:focus-visible {
 .painel-topo button:hover { color: var(--azul); }
 
 @keyframes piscar { 50% { opacity: 0.15; } }
+
+/* Quem respondeu. Âmbar quando a reserva (Groq) assumiu no lugar do Gemini. */
+.painel-provedor { font-style: normal; color: var(--muted); }
+.painel-provedor.reserva { color: #f4c97a; }
 /* ==========================================================================
    Conversa
    ========================================================================== */

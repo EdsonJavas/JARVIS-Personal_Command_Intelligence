@@ -40,12 +40,14 @@ import {
 } from "./jarvis/falhas";
 import { falaDaResposta } from "./jarvis/fala";
 import {
+  algumLivre,
   desmarcar,
   marcarEsgotado,
   modeloAtual,
   proximoModelo,
   type NivelDeModelo,
 } from "./jarvis/modelos";
+import { provedoresConfigurados, type Provedor } from "./jarvis/provedores";
 import { classificarDificuldade } from "./jarvis/dificuldade";
 import { criarAquecedorDeFala } from "./voz/aquecerResposta";
 import { classificarRecusa } from "./jarvis/recusa";
@@ -54,8 +56,6 @@ import { resumirSelecao, selecionarFerramentas } from "./jarvis/selecaoDeFerrame
 import { aplicarDelta, lerQuadros, montarMensagem, novoEstado } from "./jarvis/fluxoProvedor";
 import { comRecapitulacao, resumirSaida } from "./jarvis/recapitulacao";
 
-const DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
-const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
 
 /**
  * Quanto de saída CRUA de ferramenta cabe no contexto antes de encolher.
@@ -79,10 +79,14 @@ const TETO_NO_FECHAMENTO = 60_000;
  * variável de ambiente, e Groq ou OpenRouter podem devolver 400 por campo
  * desconhecido. Uma recusa dessas desliga o parâmetro pelo resto do processo,
  * em vez de derrubar todas as respostas seguintes.
+ *
+ * POR ENDEREÇO: com a reserva do Groq, uma recusa dele desligava o parâmetro
+ * também para o Gemini, que o aceita — e o Gemini voltava a raciocinar no
+ * padrão dinâmico, o lento.
  */
-let razaoRecusada = false;
-function razaoLigada(): boolean {
-  return !razaoRecusada && process.env.JARVIS_RAZAO !== "0";
+const razaoRecusadaEm = new Set<string>();
+function razaoLigada(endpoint: string): boolean {
+  return !razaoRecusadaEm.has(endpoint) && process.env.JARVIS_RAZAO !== "0";
 }
 /** Quantos turnos atrás ainda mantêm um grupo externo disponível. */
 const TURNOS_QUE_LEMBRAM_O_GRUPO = 3;
@@ -147,32 +151,60 @@ export type RespostaDoJarvis = {
   reply: string;
   fala: string;
   model: string;
+  /** Quem respondeu: "Gemini", "Groq" ou o endereço do provedor personalizado. */
+  provedor: string;
   actions: AcaoJarvis[];
   motivoDeParada: MotivoDeParada;
 };
 
-function resolveChatEndpoint(baseUrl: string) {
-  const normalized = baseUrl.replace(/\/+$/, "");
-  return normalized.endsWith("/chat/completions")
-    ? normalized
-    : `${normalized}/chat/completions`;
-}
-
-function getGeminiConfiguration() {
-  const apiKey = process.env.LLM_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
+/**
+ * Os provedores com chave, na ordem de preferência. Ver jarvis/provedores.ts.
+ */
+function provedoresComChave(): Provedor[] {
+  const provedores = provedoresConfigurados();
+  if (provedores.length === 0) {
     throw new JarvisProviderError(
       "missing_key",
       "A chave de IA ainda não foi configurada no projeto."
     );
   }
+  return provedores;
+}
 
+/**
+ * Onde a rodada começa: o primeiro provedor que ainda tem modelo com cota.
+ *
+ * Com a escada do Gemini toda riscada no dia, começar por ele custaria um 429
+ * por rodada só para descobrir o que já se sabe. O Gemini volta a ser o
+ * primeiro sozinho, na virada do dia, quando as marcas expiram.
+ */
+function partida(provedores: Provedor[], nivel: NivelDeModelo) {
+  const indice = Math.max(
+    0,
+    provedores.findIndex((p) => algumLivre(p.modelos(nivel)))
+  );
+  const provedor = provedores[indice];
   return {
-    apiKey,
-    endpoint: resolveChatEndpoint(process.env.LLM_BASE_URL?.trim() || DEFAULT_GEMINI_BASE_URL),
+    provedor,
+    reservas: provedores.slice(indice + 1),
     // O modelo sai do rodízio, e não fixo: a cota gratuita é POR MODELO, e
     // trocar ao esgotar é o que mantém o Jarvis de pé o dia inteiro.
-    model: modeloAtual(),
+    model: modeloAtual(nivel, provedor.modelos(nivel)),
+  };
+}
+
+/**
+ * Tira a assinatura de raciocínio do Gemini 3 antes de mandar a outro provedor.
+ *
+ * Ela vem dentro das chamadas de ferramenta e o Gemini EXIGE que volte intacta;
+ * os outros não a conhecem e podem recusar o pedido inteiro por um campo
+ * estranho. Só existe quando a troca acontece no meio de uma tarefa.
+ */
+function semAssinaturaDoGemini(mensagem: Omit<ProviderMessage, "_podavel">) {
+  if (!mensagem.tool_calls) return mensagem;
+  return {
+    ...mensagem,
+    tool_calls: mensagem.tool_calls.map(({ extra_content: _assinatura, ...chamada }) => chamada),
   };
 }
 
@@ -288,11 +320,14 @@ async function lerEmFluxo(
 }
 
 async function callProvider(
-  endpoint: string,
-  apiKey: string,
+  provedor: Provedor,
   model: string,
   messages: ProviderMessage[],
   opcoes: {
+    /** Quem responde se este provedor não puder, na ordem. */
+    reservas?: Provedor[];
+    /** Avisado de quem respondeu de fato, depois de trocas de modelo ou provedor. */
+    aoResponder?: (modelo: string, provedor: Provedor) => void;
     sinal?: AbortSignal;
     comFerramentas: boolean;
     /** Quais ferramentas entram no pedido. Ausente = todas. */
@@ -316,8 +351,12 @@ async function callProvider(
     jaEsperou?: boolean;
   }
 ): Promise<ProviderMessage> {
-  const limpo = messages.map(({ _podavel, ...resto }) => resto);
+  const { endpoint, apiKey } = provedor;
+  const limpo = messages.map(({ _podavel, ...resto }) =>
+    provedor.id === "gemini" ? resto : semAssinaturaDoGemini(resto)
+  );
   const emFluxo = Boolean(opcoes.aoTexto);
+  const nivel = opcoes.nivel ?? "rapido";
 
   /**
    * Tenta o próximo modelo quando a cota deste acabou.
@@ -327,10 +366,24 @@ async function callProvider(
    * além de a resposta continuar vindo.
    */
   const tentarProximo = async (): Promise<ProviderMessage | null> => {
-    const seguinte = proximoModelo(model, opcoes.nivel);
+    const seguinte = proximoModelo(model, opcoes.nivel, provedor.modelos(nivel));
     if (!seguinte) return null;
     console.warn(`[Modelo] trocando ${model} por ${seguinte}.`);
-    return callProvider(endpoint, apiKey, seguinte, messages, opcoes);
+    return callProvider(provedor, seguinte, messages, opcoes);
+  };
+
+  /**
+   * Passa ao provedor seguinte quando ESTE não pode responder.
+   *
+   * Vem depois da escada de modelos, nunca antes: trocar de provedor custa mais
+   * que trocar de modelo, porque o seguinte é outro jeito de pensar.
+   */
+  const tentarReserva = async (motivo: string): Promise<ProviderMessage | null> => {
+    const [seguinte, ...depois] = opcoes.reservas ?? [];
+    if (!seguinte) return null;
+    const modelo = modeloAtual(nivel, seguinte.modelos(nivel));
+    console.warn(`[Provedor] ${provedor.nome} ${motivo}; passando para ${seguinte.nome} (${modelo}).`);
+    return callProvider(seguinte, modelo, messages, { ...opcoes, reservas: depois, jaEsperou: false });
   };
 
   let response: Response;
@@ -364,7 +417,7 @@ async function callProvider(
          * Escolher uma ferramenta não precisa de reflexão; escrever a resposta
          * precisa.
          */
-        ...(razaoLigada() && opcoes.razao ? { reasoning_effort: opcoes.razao } : {}),
+        ...(razaoLigada(endpoint) && opcoes.razao ? { reasoning_effort: opcoes.razao } : {}),
         ...(emFluxo ? { stream: true } : {}),
       }),
       signal: opcoes.sinal,
@@ -373,6 +426,9 @@ async function callProvider(
     if (opcoes.sinal?.aborted) {
       throw new JarvisProviderError("provider_failure", "Execução interrompida.");
     }
+    // Sem rede até este provedor não quer dizer sem rede até o seguinte.
+    const daReserva = await tentarReserva("não respondeu");
+    if (daReserva) return daReserva;
     throw new JarvisProviderError(
       "provider_failure",
       "Não foi possível alcançar o provedor de IA."
@@ -384,6 +440,7 @@ async function callProvider(
   // provedor viraria "quadro corrompido".
   if (emFluxo && response.ok && response.body) {
     desmarcar(model);
+    opcoes.aoResponder?.(model, provedor);
     return lerEmFluxo(response.body, opcoes.aoTexto!, opcoes.sinal);
   }
 
@@ -407,10 +464,10 @@ async function callProvider(
      * diferença entre "trocar de provedor exige mexer no código" e "trocar de
      * provedor simplesmente funciona".
      */
-    if (response.status === 400 && razaoLigada() && /reasoning_effort/i.test(rawBody)) {
-      console.warn("[Jarvis] o provedor recusou reasoning_effort; seguindo sem ele.");
-      razaoRecusada = true;
-      return callProvider(endpoint, apiKey, model, messages, opcoes);
+    if (response.status === 400 && razaoLigada(endpoint) && /reasoning_effort/i.test(rawBody)) {
+      console.warn(`[Jarvis] ${provedor.nome} recusou reasoning_effort; seguindo sem ele.`);
+      razaoRecusadaEm.add(endpoint);
+      return callProvider(provedor, model, messages, opcoes);
     }
 
     const recusa = classificarRecusa(response.status, rawBody);
@@ -419,6 +476,8 @@ async function callProvider(
       marcarEsgotado(model);
       const doProximo = await tentarProximo();
       if (doProximo) return doProximo;
+      const daReserva = await tentarReserva("esgotou a cota do dia");
+      if (daReserva) return daReserva;
       throw new JarvisProviderError("quota_exceeded", describeProviderFailure(429));
     }
 
@@ -428,14 +487,21 @@ async function callProvider(
       const doProximo = await tentarProximo();
       if (doProximo) return doProximo;
 
-      // A fila acabou. Uma espera, do tamanho que o provedor pediu, e a última
+      // A escada acabou. Com reserva, ela responde AGORA — esperar o minuto
+      // renovar seria fazer o dono esperar por nada.
+      const daReserva = await tentarReserva(
+        recusa.tipo === "minuto" ? "pediu uma pausa" : "está instável"
+      );
+      if (daReserva) return daReserva;
+
+      // Sem reserva: uma espera, do tamanho que o provedor pediu, e a última
       // tentativa no mesmo modelo — uma só, para não virar laço.
       if (recusa.tipo === "minuto" && !opcoes.jaEsperou) {
         await dormir(recusa.esperaMs, opcoes.sinal);
         if (opcoes.sinal?.aborted) {
           throw new JarvisProviderError("provider_failure", "Execução interrompida.");
         }
-        return callProvider(endpoint, apiKey, model, messages, { ...opcoes, jaEsperou: true });
+        return callProvider(provedor, model, messages, { ...opcoes, jaEsperou: true });
       }
 
       throw new JarvisProviderError(
@@ -447,11 +513,16 @@ async function callProvider(
       );
     }
 
+    // Chave recusada, modelo inexistente: problema DESTE provedor. O seguinte
+    // responde, e o log deixa claro o que precisa ser consertado.
+    const daReserva = await tentarReserva(`recusou o pedido (${response.status})`);
+    if (daReserva) return daReserva;
     throw new JarvisProviderError("provider_failure", describeProviderFailure(response.status));
   }
 
   // Respondeu: se estava riscado por engano, a marca sai agora.
   desmarcar(model);
+  opcoes.aoResponder?.(model, provedor);
 
   let payload: { choices?: { message?: ProviderMessage }[] } | null = null;
   try {
@@ -573,10 +644,17 @@ export async function generateJarvisReply(
   mensagens: JarvisChatMessage[],
   opcoes: OpcoesJarvis = {}
 ): Promise<RespostaDoJarvis> {
-  const { apiKey, endpoint } = getGeminiConfiguration();
+  const provedores = provedoresComChave();
   // Por rodada, não por turno: se o rodízio trocou de modelo no meio, a rodada
   // seguinte segue no que respondeu em vez de pagar um 429 para redescobrir.
-  let model = modeloAtual();
+  let provedorAtual = provedores[0];
+  let model = modeloAtual("rapido", provedorAtual.modelos("rapido"));
+  /** Quem respondeu de fato, depois das trocas: é o que a ilha mostra. */
+  const aoResponder = (modelo: string, provedor: Provedor) => {
+    model = modelo;
+    provedorAtual = provedor;
+  };
+  const reservasDe = (provedor: Provedor) => provedores.slice(provedores.indexOf(provedor) + 1);
   const orcamento: OrcamentoDeExecucao = { ...ORCAMENTO_PADRAO, ...opcoes.orcamento };
   const sinal = opcoes.sinal ?? new AbortController().signal;
   const emitir = opcoes.aoEvento ?? (() => {});
@@ -625,6 +703,7 @@ export async function generateJarvisReply(
     reply: "",
     fala: "",
     model,
+    provedor: provedorAtual.nome,
     actions,
     motivoDeParada: "cancelado",
   });
@@ -712,8 +791,11 @@ export async function generateJarvisReply(
        * segundos antes da primeira palavra — isso não parece mais inteligente,
        * parece quebrado. O profundo é gasto na rodada que redige.
        */
-      model = modeloAtual("rapido");
-      mensagem = await callProvider(endpoint, apiKey, model, conversa, {
+      const inicio = partida(provedores, "rapido");
+      model = inicio.model;
+      mensagem = await callProvider(inicio.provedor, model, conversa, {
+        reservas: inicio.reservas,
+        aoResponder,
         sinal,
         comFerramentas: true,
         nivel: "rapido",
@@ -758,7 +840,9 @@ export async function generateJarvisReply(
        */
       if (!texto) {
         console.warn("[Jarvis] resposta vazia; repetindo com teto maior.");
-        const segunda = await callProvider(endpoint, apiKey, model, conversa, {
+        const segunda = await callProvider(provedorAtual, model, conversa, {
+          reservas: reservasDe(provedorAtual),
+          aoResponder,
           sinal,
           comFerramentas: false,
           tetoDeSaida: TETO_RESPOSTA,
@@ -780,6 +864,7 @@ export async function generateJarvisReply(
         reply: texto,
         fala: falaDaResposta(texto),
         model,
+        provedor: provedorAtual.nome,
         actions,
         motivoDeParada: "concluido",
       };
@@ -980,15 +1065,17 @@ export async function generateJarvisReply(
     });
     console.info(`[Modelo] fechamento ${dificuldade.nivel} (${dificuldade.motivo})`);
 
-    model = modeloAtual(dificuldade.nivel);
+    const fim = partida(provedores, dificuldade.nivel);
+    model = fim.model;
     // A rodada que ESCREVE a resposta lê o que foi medido, não o resumo dele.
     restaurarParaFechamento(conversa);
     fechamento = await callProvider(
-      endpoint,
-      apiKey,
+      fim.provedor,
       model,
       [...conversa, { role: "system", content: notaDeFechamento(motivoDeParada) }],
       {
+        reservas: fim.reservas,
+        aoResponder,
         sinal,
         comFerramentas: false,
         tetoDeSaida: TETO_RESPOSTA,
@@ -1009,14 +1096,28 @@ export async function generateJarvisReply(
 
   const texto = fechamento?.content?.trim();
   if (texto) {
-    return { reply: texto, fala: falaDaResposta(texto), model, actions, motivoDeParada };
+    return {
+      reply: texto,
+      fala: falaDaResposta(texto),
+      model,
+      provedor: provedorAtual.nome,
+      actions,
+      motivoDeParada,
+    };
   }
 
   // Fechamento vazio ou falho: monta uma resposta determinística com o que foi
   // apurado. Jogar fora várias rodadas de trabalho real por causa de uma
   // mensagem vazia seria o pior desfecho possível.
   const reply = montarRespostaDeterministica(actions, motivoDeParada);
-  return { reply, fala: falaDaResposta(reply), model, actions, motivoDeParada };
+  return {
+    reply,
+    fala: falaDaResposta(reply),
+    model,
+    provedor: provedorAtual.nome,
+    actions,
+    motivoDeParada,
+  };
 }
 
 function montarRespostaDeterministica(

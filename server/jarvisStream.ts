@@ -24,6 +24,7 @@ import { modeloAtual } from "./jarvis/modelos";
 import { lembrar } from "./memoria/repositorio";
 import { generateJarvisReply, JarvisProviderError } from "./jarvisAi";
 import { concluirTurno, prepararTurno } from "./jarvis/turno";
+import { falaNestaTela, origemDaTela, type OrigemDaTela } from "./tempo/quemFala";
 
 /**
  * Transporte dos eventos do laço até a interface.
@@ -253,6 +254,7 @@ async function executar(execucaoId: string, mensagens: MensagemDeFio[]): Promise
       texto: resposta.reply,
       fala: resposta.fala,
       modelo: resposta.model,
+      provedor: resposta.provedor,
       motivoDeParada: resposta.motivoDeParada,
       acoes: resposta.actions,
     });
@@ -289,13 +291,16 @@ async function executar(execucaoId: string, mensagens: MensagemDeFio[]): Promise
  * acontecendo. Amarrá-la a uma execução faria o lembrete das 15h só existir se
  * o dono já estivesse conversando às 15h.
  */
-const telasAbertas = new Set<Response>();
+const telasAbertas = new Map<Response, OrigemDaTela>();
 
 export function anunciarIniciativa(iniciativa: IniciativaJarvis): number {
   let entregues = 0;
-  for (const res of telasAbertas) {
+  const origens = [...telasAbertas.values()];
+  for (const [res, origem] of telasAbertas) {
+    // Todas mostram o cartão; com a ilha aberta, só ela fala. Ver quemFala.ts.
+    const paraEsta: IniciativaJarvis = { ...iniciativa, falar: falaNestaTela(origem, origens) };
     try {
-      res.write(`event: iniciativa\ndata: ${JSON.stringify(iniciativa)}\n\n`);
+      res.write(`event: iniciativa\ndata: ${JSON.stringify(paraEsta)}\n\n`);
       entregues += 1;
     } catch {
       /* conexão morta: o próprio 'close' a remove */
@@ -317,7 +322,7 @@ jarvisStreamRouter.get("/iniciativas", async (req: Request, res: Response) => {
   res.flushHeaders?.();
   req.socket.setNoDelay(true);
 
-  telasAbertas.add(res);
+  telasAbertas.set(res, origemDaTela(req.query.origem));
 
   // Este fluxo fica aberto o dia inteiro, então o keepalive não é opcional:
   // sem ele, qualquer proxy ou o próprio sistema derruba a conexão ociosa.
